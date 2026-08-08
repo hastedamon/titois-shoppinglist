@@ -245,20 +245,6 @@
     }
     .add-btn.active { background: var(--green-600); }
 
-    /* ── Notification banner ── */
-    .notif-banner {
-      padding: 10px 16px; background: #fef9e7; border-bottom: 1px solid #f0e4b8;
-      display: flex; align-items: center; gap: 8px; font-size: 13px; color: #7a6a2a;
-    }
-    .notif-banner button {
-      margin-left: auto; padding: 4px 12px; border-radius: 8px; border: none;
-      background: var(--green-600); color: #fff; font-size: 13px; font-weight: 600;
-      cursor: pointer;
-    }
-    .notif-banner .dismiss {
-      background: none; color: var(--text-muted); font-size: 18px; margin-left: 4px; padding: 0;
-    }
-
     /* ── Loading ── */
     .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100dvh; gap: 16px; }
     .spinner {
@@ -326,12 +312,6 @@ const i18n = {
     clearAll: 'Clear all',
     signOut: '↩ Sign out',
     frequent: '⚡ Frequent',
-    enableNotifs: 'Enable notifications',
-    notifPrompt: 'Get notified when your partner updates the list?',
-    notifDismiss: '×',
-    notifEnabled: 'Notifications enabled',
-    notifBlocked: 'Notifications blocked by browser',
-    newItems: (n) => `${n} new item${n !== 1 ? 's' : ''} added to the list`,
     categories: {
       produce: 'Produce', dairy: 'Dairy', meat: 'Meat & Fish', bakery: 'Bakery',
       frozen: 'Frozen', drinks: 'Drinks', snacks: 'Snacks', household: 'Household', other: 'Other',
@@ -357,12 +337,6 @@ const i18n = {
     clearAll: 'Esborra tot',
     signOut: '↩ Tanca sessió',
     frequent: '⚡ Freqüents',
-    enableNotifs: 'Activa notificacions',
-    notifPrompt: "Vols rebre notificacions quan la teva parella actualitzi la llista?",
-    notifDismiss: '×',
-    notifEnabled: 'Notificacions activades',
-    notifBlocked: 'Notificacions bloquejades pel navegador',
-    newItems: (n) => `${n} article${n !== 1 ? 's' : ''} nou${n !== 1 ? 's' : ''} afegit${n !== 1 ? 's' : ''}`,
     categories: {
       produce: 'Fruita i Verdura', dairy: 'Lactis', meat: 'Carn i Peix', bakery: 'Forn',
       frozen: 'Congelats', drinks: 'Begudes', snacks: 'Snacks', household: 'Llar', other: 'Altres',
@@ -419,9 +393,6 @@ const state = {
   toast: null,
   syncing: false,
   lang: 'en',
-  notifPermission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
-  showNotifBanner: false,
-  previousItemIds: new Set(),
 };
 
 let tokenClient = null;
@@ -438,26 +409,6 @@ function saveLang(lang) {
   try { localStorage.setItem('shopping-list-lang', lang); } catch(e) {}
   document.title = t('appTitle');
   render();
-}
-
-// ╔══════════════════════════════════════════════════╗
-// ║  Notifications                                    ║
-// ╚══════════════════════════════════════════════════╝
-function requestNotifPermission() {
-  if (typeof Notification === 'undefined') return;
-  Notification.requestPermission().then(perm => {
-    state.notifPermission = perm;
-    state.showNotifBanner = false;
-    if (perm === 'granted') showToast(t('notifEnabled'));
-    else if (perm === 'denied') showToast(t('notifBlocked'));
-    render();
-  });
-}
-
-function sendNotification(title, body) {
-  if (state.notifPermission !== 'granted') return;
-  if (document.visibilityState === 'visible') return; // Don't notify if app is in foreground
-  try { new Notification(title, { body, icon: '🛒' }); } catch(e) {}
 }
 
 // ╔══════════════════════════════════════════════════╗
@@ -616,14 +567,6 @@ async function onTokenResponse(resp) {
   await findOrCreateFiles();
   await Promise.all([loadList(), loadFrequency()]);
 
-  // Snapshot current item IDs so we don't notify for existing items
-  state.previousItemIds = new Set(state.items.map(i => i.id));
-
-  // Show notification banner if not yet granted
-  if (state.notifPermission === 'default') {
-    state.showNotifBanner = true;
-  }
-
   state.screen = 'list';
   render();
   clearInterval(syncTimer);
@@ -639,7 +582,7 @@ function signOut() {
   Object.assign(state, {
     screen: 'signin', accessToken: null, user: null, fileId: null, freqFileId: null,
     items: [], frequency: {}, showUserMenu: false, showSharePanel: false,
-    showNotifBanner: false, previousItemIds: new Set(),
+
   });
   isInitialLoad = true;
   render();
@@ -732,17 +675,6 @@ async function loadList(silent = false) {
     if (data.version > state.localVersion) {
       state.items = data.items || [];
       state.localVersion = data.version;
-
-      // Check for new items added by partner → notify
-      if (state.previousItemIds.size > 0) {
-        const currentIds = new Set(state.items.map(i => i.id));
-        const newIds = [...currentIds].filter(id => !state.previousItemIds.has(id));
-        if (newIds.length > 0) {
-          const fn = t('newItems');
-          sendNotification(t('appTitle'), fn(newIds.length));
-        }
-      }
-      state.previousItemIds = new Set(state.items.map(i => i.id));
       render();
     }
   } catch (e) {
@@ -755,7 +687,6 @@ async function loadList(silent = false) {
 async function saveList() {
   if (!state.fileId || !state.accessToken) return;
   state.localVersion = Date.now();
-  state.previousItemIds = new Set(state.items.map(i => i.id));
   const data = JSON.stringify({ items: state.items, version: state.localVersion });
   await fetch(
     `https://www.googleapis.com/upload/drive/v3/files/${state.fileId}?uploadType=media`,
@@ -944,27 +875,12 @@ function renderList() {
     ),
   ];
 
-  // Notification banner
-  if (state.showNotifBanner) {
-    children.push(
-      h('div', { className: 'notif-banner' },
-        h('span', {}, '🔔'),
-        h('span', {}, t('notifPrompt')),
-        h('button', { onClick: requestNotifPermission }, t('enableNotifs')),
-        h('button', { className: 'dismiss', onClick: () => { state.showNotifBanner = false; render(); } }, t('notifDismiss')),
-      )
-    );
-  }
-
   // User menu
   if (state.showUserMenu) {
     children.push(
       h('div', { className: 'user-menu' },
         state.user?.email ? h('div', { className: 'user-menu-email' }, state.user.email) : null,
         renderLangToggle('user-menu-lang'),
-        state.notifPermission !== 'granted'
-          ? h('button', { className: 'user-menu-item', onClick: requestNotifPermission }, '🔔 ' + t('enableNotifs'))
-          : null,
         h('button', { className: 'user-menu-item danger', onClick: signOut }, t('signOut')),
       )
     );
