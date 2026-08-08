@@ -45,16 +45,27 @@
     }
     .signin-logo { font-size: 64px; margin-bottom: 16px; }
     .signin-title { font-size: 28px; font-weight: 700; color: var(--green-700); margin-bottom: 6px; }
-    .signin-subtitle { font-size: 15px; color: var(--text-muted); margin-bottom: 40px; line-height: 1.4; }
+    .signin-subtitle { font-size: 15px; color: var(--text-muted); margin-bottom: 32px; line-height: 1.4; }
     .signin-btn {
       display: flex; align-items: center; gap: 12px;
       padding: 12px 28px; border-radius: var(--radius); border: 1px solid #dadce0;
       background: #fff; font-size: 15px; font-weight: 500; color: #3c4043;
       cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-      transition: box-shadow 0.2s;
+      transition: box-shadow 0.2s; margin-bottom: 24px;
     }
     .signin-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
     .signin-btn svg { flex-shrink: 0; }
+    .lang-toggle-signin {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .lang-btn {
+      padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+      background: #fff; font-size: 13px; cursor: pointer; color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .lang-btn.active {
+      background: var(--green-600); border-color: var(--green-600); color: #fff;
+    }
 
     /* ── Header ── */
     .header {
@@ -80,7 +91,7 @@
     .user-menu {
       position: absolute; top: 66px; right: 16px; background: #fff;
       border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      padding: 8px 0; z-index: 30; min-width: 200px;
+      padding: 8px 0; z-index: 30; min-width: 220px;
     }
     .user-menu-item {
       padding: 10px 16px; font-size: 14px; cursor: pointer; display: flex;
@@ -90,6 +101,10 @@
     .user-menu-item:hover { background: var(--green-50); }
     .user-menu-item.danger { color: var(--danger); }
     .user-menu-email { padding: 8px 16px 10px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    .user-menu-lang {
+      display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border);
+    }
+    .user-menu-lang .lang-btn { font-size: 12px; padding: 4px 10px; }
 
     /* ── Share panel ── */
     .share-panel {
@@ -114,6 +129,24 @@
 
     /* ── Main ── */
     .main { padding: 8px 16px; }
+
+    /* ── Frequent items ── */
+    .frequent-section { margin-bottom: 8px; }
+    .frequent-label {
+      font-size: 12px; font-weight: 700; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 8px 4px 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .frequent-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .freq-chip {
+      display: flex; align-items: center; gap: 4px;
+      padding: 7px 12px; border-radius: 20px; border: 1px dashed var(--border);
+      background: #fff; font-size: 14px; cursor: pointer; color: var(--text-primary);
+      transition: all 0.15s;
+    }
+    .freq-chip:active { background: var(--green-100); border-style: solid; border-color: var(--green-500); }
+    .freq-chip-icon { font-size: 13px; }
+    .freq-chip-plus { color: var(--green-500); font-weight: 600; font-size: 15px; margin-left: 2px; }
 
     /* ── Empty state ── */
     .empty { text-align: center; padding: 60px 20px; }
@@ -212,6 +245,20 @@
     }
     .add-btn.active { background: var(--green-600); }
 
+    /* ── Notification banner ── */
+    .notif-banner {
+      padding: 10px 16px; background: #fef9e7; border-bottom: 1px solid #f0e4b8;
+      display: flex; align-items: center; gap: 8px; font-size: 13px; color: #7a6a2a;
+    }
+    .notif-banner button {
+      margin-left: auto; padding: 4px 12px; border-radius: 8px; border: none;
+      background: var(--green-600); color: #fff; font-size: 13px; font-weight: 600;
+      cursor: pointer;
+    }
+    .notif-banner .dismiss {
+      background: none; color: var(--text-muted); font-size: 18px; margin-left: 4px; padding: 0;
+    }
+
     /* ── Loading ── */
     .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100dvh; gap: 16px; }
     .spinner {
@@ -251,19 +298,99 @@
 const CLIENT_ID = '791815265532-1h4e02ln3h6ob4p3r1d20qf5r2p7pgea.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const LIST_FILENAME = 'shopping-list-shared.json';
+const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
+const MAX_FREQUENT = 8;
+
+// ╔══════════════════════════════════════════════════╗
+// ║  i18n — English & Catalan                        ║
+// ╚══════════════════════════════════════════════════╝
+const i18n = {
+  en: {
+    appTitle: 'Shopping List',
+    signinSubtitle: 'A shared list that syncs through Google Drive. Sign in to get started.',
+    signinBtn: 'Sign in with Google',
+    itemsToGet: (n) => `${n} item${n !== 1 ? 's' : ''} to get`,
+    addPlaceholder: 'Add an item...',
+    shareTitle: 'Share this list',
+    sharePlaceholder: "Partner's email",
+    shareBtn: 'Share',
+    sharedWith: (e) => `Shared with ${e}`,
+    shareError: 'Could not share. Check the email address.',
+    listShared: 'List shared!',
+    emptyTitle: 'Your list is empty',
+    emptyHint: 'Add items below to get started',
+    allDoneTitle: 'All done!',
+    allDoneHint: 'Everything has been checked off',
+    gotIt: (n) => `Got it (${n})`,
+    clearAll: 'Clear all',
+    signOut: '↩ Sign out',
+    frequent: '⚡ Frequent',
+    enableNotifs: 'Enable notifications',
+    notifPrompt: 'Get notified when your partner updates the list?',
+    notifDismiss: '×',
+    notifEnabled: 'Notifications enabled',
+    notifBlocked: 'Notifications blocked by browser',
+    newItems: (n) => `${n} new item${n !== 1 ? 's' : ''} added to the list`,
+    categories: {
+      produce: 'Produce', dairy: 'Dairy', meat: 'Meat & Fish', bakery: 'Bakery',
+      frozen: 'Frozen', drinks: 'Drinks', snacks: 'Snacks', household: 'Household', other: 'Other',
+    },
+  },
+  ca: {
+    appTitle: 'Llista de la Compra',
+    signinSubtitle: 'Una llista compartida que es sincronitza a través de Google Drive. Inicia sessió per començar.',
+    signinBtn: 'Inicia sessió amb Google',
+    itemsToGet: (n) => `${n} article${n !== 1 ? 's' : ''} per comprar`,
+    addPlaceholder: 'Afegeix un article...',
+    shareTitle: 'Comparteix la llista',
+    sharePlaceholder: 'Correu de la parella',
+    shareBtn: 'Comparteix',
+    sharedWith: (e) => `Compartit amb ${e}`,
+    shareError: "No s'ha pogut compartir. Comprova l'adreça.",
+    listShared: 'Llista compartida!',
+    emptyTitle: 'La llista és buida',
+    emptyHint: 'Afegeix articles a continuació',
+    allDoneTitle: 'Tot fet!',
+    allDoneHint: 'Tot ha estat marcat com a comprat',
+    gotIt: (n) => `Comprat (${n})`,
+    clearAll: 'Esborra tot',
+    signOut: '↩ Tanca sessió',
+    frequent: '⚡ Freqüents',
+    enableNotifs: 'Activa notificacions',
+    notifPrompt: "Vols rebre notificacions quan la teva parella actualitzi la llista?",
+    notifDismiss: '×',
+    notifEnabled: 'Notificacions activades',
+    notifBlocked: 'Notificacions bloquejades pel navegador',
+    newItems: (n) => `${n} article${n !== 1 ? 's' : ''} nou${n !== 1 ? 's' : ''} afegit${n !== 1 ? 's' : ''}`,
+    categories: {
+      produce: 'Fruita i Verdura', dairy: 'Lactis', meat: 'Carn i Peix', bakery: 'Forn',
+      frozen: 'Congelats', drinks: 'Begudes', snacks: 'Snacks', household: 'Llar', other: 'Altres',
+    },
+  },
+};
+
+function t(key) {
+  const lang = state.lang || 'en';
+  return i18n[lang][key] || i18n.en[key] || key;
+}
+
+function tCat(catId) {
+  const lang = state.lang || 'en';
+  return (i18n[lang].categories || {})[catId] || (i18n.en.categories || {})[catId] || catId;
+}
 
 // ── Categories ──
 const CATEGORIES = [
-  { id: 'produce', label: 'Produce', icon: '🥬' },
-  { id: 'dairy', label: 'Dairy', icon: '🧀' },
-  { id: 'meat', label: 'Meat & Fish', icon: '🥩' },
-  { id: 'bakery', label: 'Bakery', icon: '🍞' },
-  { id: 'frozen', label: 'Frozen', icon: '🧊' },
-  { id: 'drinks', label: 'Drinks', icon: '🥤' },
-  { id: 'snacks', label: 'Snacks', icon: '🍿' },
-  { id: 'household', label: 'Household', icon: '🧹' },
-  { id: 'other', label: 'Other', icon: '📦' },
+  { id: 'produce', icon: '🥬' },
+  { id: 'dairy', icon: '🧀' },
+  { id: 'meat', icon: '🥩' },
+  { id: 'bakery', icon: '🍞' },
+  { id: 'frozen', icon: '🧊' },
+  { id: 'drinks', icon: '🥤' },
+  { id: 'snacks', icon: '🍿' },
+  { id: 'household', icon: '🧹' },
+  { id: 'other', icon: '📦' },
 ];
 
 function catOf(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES.at(-1); }
@@ -271,11 +398,13 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 // ── App state ──
 const state = {
-  screen: 'loading',     // loading | signin | list
+  screen: 'loading',
   accessToken: null,
-  user: null,             // { name, email, picture }
+  user: null,
   fileId: null,
+  freqFileId: null,
   items: [],
+  frequency: {},       // { "normalized_name": { text, category, count } }
   localVersion: 0,
   inputValue: '',
   selectedCategory: 'other',
@@ -289,14 +418,118 @@ const state = {
   editText: '',
   toast: null,
   syncing: false,
+  lang: 'en',
+  notifPermission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+  showNotifBanner: false,
+  previousItemIds: new Set(),
 };
 
 let tokenClient = null;
 let syncTimer = null;
+let tokenRefreshTimer = null;
+const TOKEN_REFRESH_MS = 50 * 60 * 1000; // Refresh 10 min before expiry (tokens last ~60 min)
+
+// ── Persist language preference ──
+function loadLang() {
+  try { state.lang = localStorage.getItem('shopping-list-lang') || 'en'; } catch(e) {}
+}
+function saveLang(lang) {
+  state.lang = lang;
+  try { localStorage.setItem('shopping-list-lang', lang); } catch(e) {}
+  document.title = t('appTitle');
+  render();
+}
 
 // ╔══════════════════════════════════════════════════╗
-// ║  Google Auth                                      ║
+// ║  Notifications                                    ║
 // ╚══════════════════════════════════════════════════╝
+function requestNotifPermission() {
+  if (typeof Notification === 'undefined') return;
+  Notification.requestPermission().then(perm => {
+    state.notifPermission = perm;
+    state.showNotifBanner = false;
+    if (perm === 'granted') showToast(t('notifEnabled'));
+    else if (perm === 'denied') showToast(t('notifBlocked'));
+    render();
+  });
+}
+
+function sendNotification(title, body) {
+  if (state.notifPermission !== 'granted') return;
+  if (document.visibilityState === 'visible') return; // Don't notify if app is in foreground
+  try { new Notification(title, { body, icon: '🛒' }); } catch(e) {}
+}
+
+// ╔══════════════════════════════════════════════════╗
+// ║  Frequent items                                   ║
+// ╚══════════════════════════════════════════════════╝
+function normalizeText(text) { return text.toLowerCase().trim(); }
+
+function trackFrequency(text, category) {
+  const key = normalizeText(text);
+  if (!state.frequency[key]) {
+    state.frequency[key] = { text, category, count: 0 };
+  }
+  state.frequency[key].count++;
+  state.frequency[key].text = text; // keep latest casing
+  state.frequency[key].category = category;
+  saveFrequency();
+}
+
+function getFrequentItems() {
+  const currentTexts = new Set(state.items.map(i => normalizeText(i.text)));
+  return Object.values(state.frequency)
+    .filter(f => f.count >= 2 && !currentTexts.has(normalizeText(f.text)))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, MAX_FREQUENT);
+}
+
+function addFrequentItem(freqItem) {
+  const newItem = {
+    id: uid(), text: freqItem.text, category: freqItem.category,
+    checked: false, addedAt: new Date().toISOString(),
+  };
+  state.items.unshift(newItem);
+  trackFrequency(freqItem.text, freqItem.category);
+  render(); saveList();
+}
+
+async function loadFrequency() {
+  if (!state.freqFileId || !state.accessToken) return;
+  try {
+    const data = await gapi(`https://www.googleapis.com/drive/v3/files/${state.freqFileId}?alt=media`);
+    state.frequency = data.frequency || {};
+  } catch(e) {}
+}
+
+async function saveFrequency() {
+  if (!state.accessToken) return;
+  const data = JSON.stringify({ frequency: state.frequency });
+  if (state.freqFileId) {
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${state.freqFileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${state.accessToken}`, 'Content-Type': 'application/json' },
+      body: data,
+    });
+  } else {
+    const metadata = { name: FREQ_FILENAME, mimeType: 'application/json' };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([data], { type: 'application/json' }));
+    const created = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+      { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
+    ).then(r => r.json());
+    state.freqFileId = created.id;
+  }
+}
+
+// ╔══════════════════════════════════════════════════╗
+// ║  Google Auth (with silent token refresh)          ║
+// ╚══════════════════════════════════════════════════╝
+let isRefreshing = false;       // prevents concurrent refresh attempts
+let isInitialLoad = true;       // distinguishes first sign-in from refresh
+
 function initAuth() {
   if (typeof google === 'undefined' || !google.accounts) {
     setTimeout(initAuth, 200);
@@ -307,32 +540,93 @@ function initAuth() {
     scope: SCOPES,
     callback: onTokenResponse,
   });
-  state.screen = 'signin';
-  render();
+
+  // Try silent refresh first (skips consent if user already granted access)
+  trySilentRefresh();
 }
 
 function signIn() {
+  isInitialLoad = true;
   tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
+function trySilentRefresh() {
+  // prompt: '' means "don't show any UI" — works if user previously consented
+  try {
+    isInitialLoad = !state.user; // true if we have no user info yet
+    tokenClient.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    // Silent refresh not possible, show sign-in screen
+    state.screen = 'signin';
+    render();
+  }
+}
+
+function scheduleTokenRefresh() {
+  clearTimeout(tokenRefreshTimer);
+  tokenRefreshTimer = setTimeout(() => {
+    refreshTokenSilently();
+  }, TOKEN_REFRESH_MS);
+}
+
+async function refreshTokenSilently() {
+  if (isRefreshing) return;
+  isRefreshing = true;
+  isInitialLoad = false;
+  try {
+    tokenClient.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    console.warn('Silent refresh failed:', e);
+    isRefreshing = false;
+  }
+}
+
 async function onTokenResponse(resp) {
-  if (resp.error) { console.error(resp); return; }
+  isRefreshing = false;
+
+  if (resp.error) {
+    console.warn('Token response error:', resp.error);
+    // If silent refresh failed, show sign-in screen (only if not already on the list)
+    if (state.screen !== 'list') {
+      state.screen = 'signin';
+      render();
+    }
+    return;
+  }
+
   state.accessToken = resp.access_token;
+  scheduleTokenRefresh();
+
+  // If this is a background refresh while the list is showing, we're done
+  if (!isInitialLoad && state.screen === 'list') {
+    return;
+  }
+
+  // First-time load: fetch user info, files, etc.
   state.screen = 'loading';
   render();
 
-  // Fetch user info
   try {
-    const r = await gapi('https://www.googleapis.com/oauth2/v2/userinfo');
+    const r = await gapiRaw('https://www.googleapis.com/oauth2/v2/userinfo');
     state.user = { name: r.name, email: r.email, picture: r.picture };
   } catch(e) {
     state.user = { name: 'User', email: '', picture: '' };
   }
 
-  await findOrCreateFile();
-  await loadList();
+  await findOrCreateFiles();
+  await Promise.all([loadList(), loadFrequency()]);
+
+  // Snapshot current item IDs so we don't notify for existing items
+  state.previousItemIds = new Set(state.items.map(i => i.id));
+
+  // Show notification banner if not yet granted
+  if (state.notifPermission === 'default') {
+    state.showNotifBanner = true;
+  }
+
   state.screen = 'list';
   render();
+  clearInterval(syncTimer);
   syncTimer = setInterval(() => loadList(true), SYNC_INTERVAL);
 }
 
@@ -341,62 +635,114 @@ function signOut() {
     google.accounts.oauth2.revoke(state.accessToken);
   }
   clearInterval(syncTimer);
+  clearTimeout(tokenRefreshTimer);
   Object.assign(state, {
-    screen: 'signin', accessToken: null, user: null, fileId: null,
-    items: [], showUserMenu: false, showSharePanel: false,
+    screen: 'signin', accessToken: null, user: null, fileId: null, freqFileId: null,
+    items: [], frequency: {}, showUserMenu: false, showSharePanel: false,
+    showNotifBanner: false, previousItemIds: new Set(),
   });
+  isInitialLoad = true;
   render();
 }
 
 // ╔══════════════════════════════════════════════════╗
 // ║  Google Drive helpers                             ║
 // ╚══════════════════════════════════════════════════╝
-async function gapi(url, options = {}) {
+// Raw fetch — no retry
+async function gapiRaw(url, options = {}) {
   const r = await fetch(url, {
     ...options,
-    headers: {
-      'Authorization': `Bearer ${state.accessToken}`,
-      ...(options.headers || {}),
-    },
+    headers: { 'Authorization': `Bearer ${state.accessToken}`, ...(options.headers || {}) },
   });
   if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
 
-async function findOrCreateFile() {
-  // Search for existing file (owned or shared with me)
-  const q = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false`);
-  const search = await gapi(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`
-  );
-  if (search.files && search.files.length > 0) {
-    state.fileId = search.files[0].id;
-    return;
+// Smart fetch — retries once after silent token refresh on 401
+async function gapi(url, options = {}) {
+  const r = await fetch(url, {
+    ...options,
+    headers: { 'Authorization': `Bearer ${state.accessToken}`, ...(options.headers || {}) },
+  });
+  if (r.status === 401) {
+    // Token expired — refresh silently and retry
+    await new Promise((resolve) => {
+      const origCallback = tokenClient.callback;
+      tokenClient.callback = (resp) => {
+        isRefreshing = false;
+        if (!resp.error) {
+          state.accessToken = resp.access_token;
+          scheduleTokenRefresh();
+        }
+        tokenClient.callback = origCallback;
+        resolve();
+      };
+      isRefreshing = true;
+      try { tokenClient.requestAccessToken({ prompt: '' }); }
+      catch(e) { resolve(); }
+    });
+    // Retry the original request with new token
+    const r2 = await fetch(url, {
+      ...options,
+      headers: { 'Authorization': `Bearer ${state.accessToken}`, ...(options.headers || {}) },
+    });
+    if (!r2.ok) throw new Error(`API ${r2.status}: ${await r2.text()}`);
+    return r2.json();
   }
-  // Create new file
-  const metadata = { name: LIST_FILENAME, mimeType: 'application/json' };
-  const initData = JSON.stringify({ items: [], version: Date.now() });
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', new Blob([initData], { type: 'application/json' }));
+  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
+  return r.json();
+}
 
-  const created = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-    { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
-  ).then(r => r.json());
-  state.fileId = created.id;
+async function findOrCreateFiles() {
+  // Find shopping list file
+  const q1 = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false`);
+  const search1 = await gapi(
+    `https://www.googleapis.com/drive/v3/files?q=${q1}&spaces=drive&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`
+  );
+  if (search1.files && search1.files.length > 0) {
+    state.fileId = search1.files[0].id;
+  } else {
+    const metadata = { name: LIST_FILENAME, mimeType: 'application/json' };
+    const initData = JSON.stringify({ items: [], version: Date.now() });
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([initData], { type: 'application/json' }));
+    const created = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+      { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
+    ).then(r => r.json());
+    state.fileId = created.id;
+  }
+
+  // Find frequency file (personal, not shared)
+  const q2 = encodeURIComponent(`name='${FREQ_FILENAME}' and trashed=false`);
+  const search2 = await gapi(
+    `https://www.googleapis.com/drive/v3/files?q=${q2}&spaces=drive&fields=files(id,name)&orderBy=modifiedTime desc`
+  );
+  if (search2.files && search2.files.length > 0) {
+    state.freqFileId = search2.files[0].id;
+  }
 }
 
 async function loadList(silent = false) {
   if (!state.fileId || !state.accessToken) return;
   if (!silent) { state.syncing = true; render(); }
   try {
-    const data = await gapi(
-      `https://www.googleapis.com/drive/v3/files/${state.fileId}?alt=media`
-    );
+    const data = await gapi(`https://www.googleapis.com/drive/v3/files/${state.fileId}?alt=media`);
     if (data.version > state.localVersion) {
       state.items = data.items || [];
       state.localVersion = data.version;
+
+      // Check for new items added by partner → notify
+      if (state.previousItemIds.size > 0) {
+        const currentIds = new Set(state.items.map(i => i.id));
+        const newIds = [...currentIds].filter(id => !state.previousItemIds.has(id));
+        if (newIds.length > 0) {
+          const fn = t('newItems');
+          sendNotification(t('appTitle'), fn(newIds.length));
+        }
+      }
+      state.previousItemIds = new Set(state.items.map(i => i.id));
       render();
     }
   } catch (e) {
@@ -409,15 +755,13 @@ async function loadList(silent = false) {
 async function saveList() {
   if (!state.fileId || !state.accessToken) return;
   state.localVersion = Date.now();
+  state.previousItemIds = new Set(state.items.map(i => i.id));
   const data = JSON.stringify({ items: state.items, version: state.localVersion });
   await fetch(
     `https://www.googleapis.com/upload/drive/v3/files/${state.fileId}?uploadType=media`,
     {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${state.accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${state.accessToken}`, 'Content-Type': 'application/json' },
       body: data,
     }
   );
@@ -432,20 +776,16 @@ async function shareWith(email) {
       `https://www.googleapis.com/drive/v3/files/${state.fileId}/permissions`,
       {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${state.accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${state.accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email }),
       }
-    ).then(async r => {
-      if (!r.ok) throw new Error(await r.text());
-    });
-    state.shareMsg = { ok: true, text: `Shared with ${email}` };
+    ).then(async r => { if (!r.ok) throw new Error(await r.text()); });
+    const fn = t('sharedWith');
+    state.shareMsg = { ok: true, text: fn(email) };
     state.shareEmail = '';
-    showToast('List shared!');
+    showToast(t('listShared'));
   } catch (e) {
-    state.shareMsg = { ok: false, text: 'Could not share. Check the email address.' };
+    state.shareMsg = { ok: false, text: t('shareError') };
   }
   render();
 }
@@ -456,10 +796,12 @@ async function shareWith(email) {
 function addItem() {
   const text = state.inputValue.trim();
   if (!text) return;
-  state.items.unshift({
+  const newItem = {
     id: uid(), text, category: state.selectedCategory,
     checked: false, addedAt: new Date().toISOString(),
-  });
+  };
+  state.items.unshift(newItem);
+  trackFrequency(text, state.selectedCategory);
   state.inputValue = '';
   state.showCategoryPicker = false;
   render();
@@ -515,26 +857,18 @@ function renderNode(vnode) {
   if (typeof vnode === 'string' || typeof vnode === 'number') return document.createTextNode(vnode);
   const el = document.createElement(vnode.tag);
   for (const [k, v] of Object.entries(vnode.attrs)) {
-    if (k === 'style' && typeof v === 'object') {
-      Object.assign(el.style, v);
-    } else if (k.startsWith('on') && typeof v === 'function') {
-      el.addEventListener(k.slice(2).toLowerCase(), v);
-    } else if (k === 'className') {
-      el.className = v;
-    } else {
-      el.setAttribute(k, v);
-    }
+    if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'className') el.className = v;
+    else el.setAttribute(k, v);
   }
-  for (const child of vnode.children) {
-    el.appendChild(renderNode(child));
-  }
+  for (const child of vnode.children) el.appendChild(renderNode(child));
   return el;
 }
 
 function render() {
   const app = document.getElementById('app');
   let tree;
-
   if (state.screen === 'loading') {
     tree = h('div', { className: 'loading' },
       h('div', { className: 'spinner' }),
@@ -545,16 +879,28 @@ function render() {
   } else {
     tree = renderList();
   }
-
   app.innerHTML = '';
   app.appendChild(renderNode(tree));
+}
+
+function renderLangToggle(cls) {
+  return h('div', { className: cls || 'lang-toggle-signin' },
+    h('button', {
+      className: `lang-btn ${state.lang === 'en' ? 'active' : ''}`,
+      onClick: () => saveLang('en'),
+    }, 'English'),
+    h('button', {
+      className: `lang-btn ${state.lang === 'ca' ? 'active' : ''}`,
+      onClick: () => saveLang('ca'),
+    }, 'Català'),
+  );
 }
 
 function renderSignIn() {
   return h('div', { className: 'signin-screen' },
     h('div', { className: 'signin-logo' }, '🛒'),
-    h('div', { className: 'signin-title' }, 'Shopping List'),
-    h('div', { className: 'signin-subtitle' }, 'A shared list that syncs through Google Drive. Sign in to get started.'),
+    h('div', { className: 'signin-title' }, t('appTitle')),
+    h('div', { className: 'signin-subtitle' }, t('signinSubtitle')),
     h('button', { className: 'signin-btn', onClick: signIn },
       h('svg', { width: '20', height: '20', viewBox: '0 0 48 48' },
         h('path', { fill: '#EA4335', d: 'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z' }),
@@ -562,8 +908,9 @@ function renderSignIn() {
         h('path', { fill: '#FBBC05', d: 'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z' }),
         h('path', { fill: '#34A853', d: 'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z' }),
       ),
-      'Sign in with Google'
-    )
+      t('signinBtn')
+    ),
+    renderLangToggle(),
   );
 }
 
@@ -571,22 +918,23 @@ function renderList() {
   const unchecked = state.items.filter(i => !i.checked);
   const checked = state.items.filter(i => i.checked);
   const grouped = CATEGORIES.map(cat => ({
-    ...cat, items: unchecked.filter(i => i.category === cat.id)
+    ...cat, label: tCat(cat.id), items: unchecked.filter(i => i.category === cat.id)
   })).filter(g => g.items.length > 0);
+  const frequent = getFrequentItems();
 
   const children = [
     // Header
     h('header', { className: 'header' },
       h('div', { className: 'header-row' },
         h('div', {},
-          h('h1', {}, 'Shopping List'),
+          h('h1', {}, t('appTitle')),
           h('div', { className: 'header-meta' },
-            `${unchecked.length} item${unchecked.length !== 1 ? 's' : ''} to get`,
+            t('itemsToGet')(unchecked.length),
             state.syncing ? ' ⟳' : ''
           ),
         ),
         h('div', { className: 'header-actions' },
-          h('button', { className: 'header-btn', onClick: () => { state.showSharePanel = !state.showSharePanel; state.showUserMenu = false; render(); }, title: 'Share list' }, '👥'),
+          h('button', { className: 'header-btn', onClick: () => { state.showSharePanel = !state.showSharePanel; state.showUserMenu = false; render(); }, title: 'Share' }, '👥'),
           h('button', { className: 'header-btn', onClick: () => loadList(false), title: 'Sync' }, '↻'),
           state.user?.picture
             ? h('img', { className: 'user-avatar', src: state.user.picture, referrerpolicy: 'no-referrer', onClick: () => { state.showUserMenu = !state.showUserMenu; state.showSharePanel = false; render(); } })
@@ -596,12 +944,28 @@ function renderList() {
     ),
   ];
 
+  // Notification banner
+  if (state.showNotifBanner) {
+    children.push(
+      h('div', { className: 'notif-banner' },
+        h('span', {}, '🔔'),
+        h('span', {}, t('notifPrompt')),
+        h('button', { onClick: requestNotifPermission }, t('enableNotifs')),
+        h('button', { className: 'dismiss', onClick: () => { state.showNotifBanner = false; render(); } }, t('notifDismiss')),
+      )
+    );
+  }
+
   // User menu
   if (state.showUserMenu) {
     children.push(
       h('div', { className: 'user-menu' },
         state.user?.email ? h('div', { className: 'user-menu-email' }, state.user.email) : null,
-        h('button', { className: 'user-menu-item danger', onClick: signOut }, '↩ Sign out'),
+        renderLangToggle('user-menu-lang'),
+        state.notifPermission !== 'granted'
+          ? h('button', { className: 'user-menu-item', onClick: requestNotifPermission }, '🔔 ' + t('enableNotifs'))
+          : null,
+        h('button', { className: 'user-menu-item danger', onClick: signOut }, t('signOut')),
       )
     );
   }
@@ -610,22 +974,16 @@ function renderList() {
   if (state.showSharePanel) {
     children.push(
       h('div', { className: 'share-panel' },
-        h('h3', {}, 'Share this list'),
+        h('h3', {}, t('shareTitle')),
         h('div', { className: 'share-row' },
           h('input', {
             className: 'share-input', type: 'email',
-            placeholder: "Partner's email",
-            value: state.shareEmail,
+            placeholder: t('sharePlaceholder'), value: state.shareEmail,
             onInput: (e) => { state.shareEmail = e.target.value; },
           }),
-          h('button', {
-            className: 'share-btn',
-            onClick: () => shareWith(state.shareEmail),
-          }, 'Share'),
+          h('button', { className: 'share-btn', onClick: () => shareWith(state.shareEmail) }, t('shareBtn')),
         ),
-        state.shareMsg
-          ? h('div', { className: `share-msg ${state.shareMsg.ok ? 'ok' : 'err'}` }, state.shareMsg.text)
-          : null,
+        state.shareMsg ? h('div', { className: `share-msg ${state.shareMsg.ok ? 'ok' : 'err'}` }, state.shareMsg.text) : null,
       )
     );
   }
@@ -633,17 +991,35 @@ function renderList() {
   // Main content
   const mainChildren = [];
 
-  if (unchecked.length === 0 && checked.length === 0) {
+  // Frequent items
+  if (frequent.length > 0) {
+    mainChildren.push(
+      h('div', { className: 'frequent-section' },
+        h('div', { className: 'frequent-label' }, t('frequent')),
+        h('div', { className: 'frequent-chips' },
+          ...frequent.map(f =>
+            h('button', { className: 'freq-chip', onClick: () => addFrequentItem(f) },
+              h('span', { className: 'freq-chip-icon' }, catOf(f.category).icon),
+              h('span', {}, f.text),
+              h('span', { className: 'freq-chip-plus' }, '+'),
+            )
+          ),
+        ),
+      )
+    );
+  }
+
+  if (unchecked.length === 0 && checked.length === 0 && frequent.length === 0) {
     mainChildren.push(h('div', { className: 'empty' },
       h('span', { className: 'empty-icon' }, '🛒'),
-      h('div', { className: 'empty-title' }, 'Your list is empty'),
-      h('div', { className: 'empty-hint' }, 'Add items below to get started'),
+      h('div', { className: 'empty-title' }, t('emptyTitle')),
+      h('div', { className: 'empty-hint' }, t('emptyHint')),
     ));
-  } else if (unchecked.length === 0) {
+  } else if (unchecked.length === 0 && checked.length > 0) {
     mainChildren.push(h('div', { className: 'empty' },
       h('span', { className: 'empty-icon' }, '✅'),
-      h('div', { className: 'empty-title' }, 'All done!'),
-      h('div', { className: 'empty-hint' }, 'Everything has been checked off'),
+      h('div', { className: 'empty-title' }, t('allDoneTitle')),
+      h('div', { className: 'empty-hint' }, t('allDoneHint')),
     ));
   }
 
@@ -651,10 +1027,7 @@ function renderList() {
   for (const group of grouped) {
     const groupItems = group.items.map(item =>
       h('div', { className: 'item' },
-        h('div', {
-          className: 'item-check',
-          onClick: () => toggleItem(item.id),
-        }),
+        h('div', { className: 'item-check', onClick: () => toggleItem(item.id) }),
         state.editingId === item.id
           ? h('input', {
               id: 'edit-input', className: 'item-edit', value: state.editText,
@@ -686,9 +1059,9 @@ function renderList() {
     const checkedChildren = [
       h('button', { className: 'checked-toggle', onClick: () => { state.showChecked = !state.showChecked; render(); } },
         h('span', {}, state.showChecked ? '▾' : '▸'),
-        h('span', {}, `Got it (${checked.length})`),
+        h('span', {}, t('gotIt')(checked.length)),
         state.showChecked
-          ? h('button', { className: 'clear-all-btn', onClick: (e) => { e.stopPropagation(); clearChecked(); } }, 'Clear all')
+          ? h('button', { className: 'clear-all-btn', onClick: (e) => { e.stopPropagation(); clearChecked(); } }, t('clearAll'))
           : null,
       ),
     ];
@@ -725,7 +1098,7 @@ function renderList() {
             },
           },
             h('span', {}, cat.icon),
-            h('span', { className: 'cat-chip-label' }, cat.label),
+            h('span', { className: 'cat-chip-label' }, tCat(cat.id)),
           )
         ),
       )
@@ -739,7 +1112,7 @@ function renderList() {
       }, catOf(state.selectedCategory).icon),
       h('input', {
         id: 'item-input', className: 'input-field',
-        placeholder: 'Add an item...', value: state.inputValue,
+        placeholder: t('addPlaceholder'), value: state.inputValue,
         onInput: (e) => { state.inputValue = e.target.value; },
         onKeydown: (e) => { if (e.key === 'Enter') addItem(); },
       }),
@@ -761,6 +1134,8 @@ function renderList() {
 
 // ── Start ──
 document.addEventListener('DOMContentLoaded', () => {
+  loadLang();
+  document.title = t('appTitle');
   render();
   initAuth();
 });
