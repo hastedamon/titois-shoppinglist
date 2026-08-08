@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#4a7c59">
+  <title>Shopping List</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-700: #3a6648;
+      --green-600: #4a7c59;
+      --green-500: #5a8a5a;
+      --green-100: #e8ece4;
+      --green-50: #f4f7f2;
+      --sage-bg: #FAFBF8;
+      --text-primary: #1a2e1a;
+      --text-secondary: #5a7a5a;
+      --text-muted: #8a9a8a;
+      --border: #dce4d8;
+      --card-bg: #fff;
+      --danger: #c47070;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--sage-bg);
+      color: var(--text-primary);
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app { max-width: 480px; margin: 0 auto; position: relative; min-height: 100dvh; }
+
+    /* ── Sign-in screen ── */
+    .signin-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100dvh; padding: 40px 24px; text-align: center;
+    }
+    .signin-logo { font-size: 64px; margin-bottom: 16px; }
+    .signin-title { font-size: 28px; font-weight: 700; color: var(--green-700); margin-bottom: 6px; }
+    .signin-subtitle { font-size: 15px; color: var(--text-muted); margin-bottom: 40px; line-height: 1.4; }
+    .signin-btn {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 28px; border-radius: var(--radius); border: 1px solid #dadce0;
+      background: #fff; font-size: 15px; font-weight: 500; color: #3c4043;
+      cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: box-shadow 0.2s;
+    }
+    .signin-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+    .signin-btn svg { flex-shrink: 0; }
+
+    /* ── Header ── */
+    .header {
+      padding: 20px 20px 14px;
+      background: linear-gradient(135deg, var(--green-600) 0%, var(--green-700) 100%);
+      color: #fff; position: sticky; top: 0; z-index: 10;
+    }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+    .header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .header-meta { font-size: 13px; opacity: 0.85; margin-top: 3px; }
+    .header-actions { display: flex; gap: 6px; }
+    .header-btn {
+      background: rgba(255,255,255,0.15); border: none; color: #fff;
+      width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+    }
+    .user-avatar {
+      width: 38px; height: 38px; border-radius: 10px; object-fit: cover;
+      border: 2px solid rgba(255,255,255,0.3); cursor: pointer;
+    }
+
+    /* ── User menu ── */
+    .user-menu {
+      position: absolute; top: 66px; right: 16px; background: #fff;
+      border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      padding: 8px 0; z-index: 30; min-width: 200px;
+    }
+    .user-menu-item {
+      padding: 10px 16px; font-size: 14px; cursor: pointer; display: flex;
+      align-items: center; gap: 8px; border: none; background: none; width: 100%;
+      color: var(--text-primary);
+    }
+    .user-menu-item:hover { background: var(--green-50); }
+    .user-menu-item.danger { color: var(--danger); }
+    .user-menu-email { padding: 8px 16px 10px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+
+    /* ── Share panel ── */
+    .share-panel {
+      padding: 16px; background: var(--green-50); border-bottom: 1px solid var(--border);
+    }
+    .share-panel h3 { font-size: 15px; font-weight: 600; color: var(--green-700); margin-bottom: 8px; }
+    .share-row { display: flex; gap: 8px; }
+    .share-input {
+      flex: 1; height: 40px; border-radius: 10px; border: 1px solid var(--border);
+      padding: 0 12px; font-size: 14px; outline: none; background: #fff;
+    }
+    .share-input:focus { border-color: var(--green-500); }
+    .share-btn {
+      height: 40px; padding: 0 16px; border-radius: 10px; border: none;
+      background: var(--green-600); color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer;
+    }
+    .share-btn:disabled { opacity: 0.5; cursor: default; }
+    .share-msg { font-size: 13px; margin-top: 8px; }
+    .share-msg.ok { color: var(--green-600); }
+    .share-msg.err { color: var(--danger); }
+
+    /* ── Main ── */
+    .main { padding: 8px 16px; }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 48px; display: block; margin-bottom: 12px; }
+    .empty-title { font-size: 18px; font-weight: 600; color: var(--green-700); margin-bottom: 4px; }
+    .empty-hint { font-size: 14px; color: var(--text-muted); }
+
+    /* ── Category groups ── */
+    .group { margin-bottom: 4px; }
+    .group-header { display: flex; align-items: center; gap: 6px; padding: 12px 4px 6px; }
+    .group-icon { font-size: 16px; }
+    .group-label {
+      font-size: 12px; font-weight: 700; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .group-count {
+      font-size: 11px; color: var(--text-muted); background: var(--green-100);
+      border-radius: 10px; padding: 1px 7px; font-weight: 600;
+    }
+
+    /* ── Item rows ── */
+    .item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; background: var(--card-bg); border-radius: var(--radius);
+      margin-bottom: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .item-check {
+      flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px;
+      border: 2px solid #b0c4a8; background: #f8faf6; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: transparent; transition: all 0.15s;
+    }
+    .item-check.checked {
+      border-color: var(--green-500); background: var(--green-500); color: #fff;
+    }
+    .item-text {
+      flex: 1; font-size: 16px; min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; cursor: pointer;
+    }
+    .item-text.checked { color: var(--text-muted); text-decoration: line-through; }
+    .item-edit {
+      flex: 1; font-size: 16px; border: none; border-bottom: 2px solid var(--green-500);
+      padding: 2px 0; outline: none; background: transparent; color: var(--text-primary);
+      width: 100%;
+    }
+    .item-delete {
+      flex-shrink: 0; background: none; border: none; color: #c0a0a0;
+      font-size: 22px; cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+
+    /* ── Checked section ── */
+    .checked-toggle {
+      display: flex; align-items: center; gap: 6px; background: none;
+      border: none; padding: 12px 4px; cursor: pointer; width: 100%;
+      font-size: 14px; font-weight: 600; color: var(--text-muted);
+    }
+    .clear-all-btn {
+      margin-left: auto; font-size: 13px; color: var(--danger); font-weight: 500;
+      background: none; border: none; cursor: pointer;
+    }
+
+    /* ── Input bar ── */
+    .input-bar {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px; background: var(--sage-bg);
+      border-top: 1px solid #e0e8dc; padding: 8px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom)); z-index: 20;
+    }
+    .category-picker {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 10px;
+    }
+    .cat-chip {
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 10px; border-radius: 20px; border: 1px solid var(--border);
+      background: #fff; font-size: 13px; cursor: pointer; color: var(--green-700);
+    }
+    .cat-chip.active { background: var(--green-600); border-color: var(--green-600); color: #fff; }
+    .cat-chip-label { font-weight: 500; }
+    .input-row { display: flex; align-items: center; gap: 8px; }
+    .cat-btn {
+      width: 42px; height: 42px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: #fff; font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .cat-btn.active { border-color: var(--green-600); background: var(--green-50); }
+    .input-field {
+      flex: 1; height: 42px; border-radius: var(--radius); border: 1px solid var(--border);
+      padding: 0 14px; font-size: 16px; background: #fff; outline: none; color: var(--text-primary);
+    }
+    .input-field:focus { border-color: var(--green-500); }
+    .add-btn {
+      width: 42px; height: 42px; border-radius: var(--radius); border: none;
+      background: #c8d8c4; color: #fff; font-size: 24px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background 0.15s;
+    }
+    .add-btn.active { background: var(--green-600); }
+
+    /* ── Loading ── */
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100dvh; gap: 16px; }
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--green-100);
+      border-top-color: var(--green-500); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+      background: var(--green-700); color: #fff; padding: 10px 20px;
+      border-radius: 20px; font-size: 14px; z-index: 50;
+      animation: fadeInOut 2.5s ease-in-out forwards;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+      15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    .spacer { height: 140px; }
+  </style>
+</head>
+<body>
+
+<div class="app" id="app"></div>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// ╔══════════════════════════════════════════════════╗
+// ║  CONFIGURATION — Replace with your OAuth ID      ║
+// ╚══════════════════════════════════════════════════╝
+const CLIENT_ID = '791815265532-1h4e02ln3h6ob4p3r1d20qf5r2p7pgea.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const LIST_FILENAME = 'shopping-list-shared.json';
+const SYNC_INTERVAL = 5000;
+
+// ── Categories ──
+const CATEGORIES = [
+  { id: 'produce', label: 'Produce', icon: '🥬' },
+  { id: 'dairy', label: 'Dairy', icon: '🧀' },
+  { id: 'meat', label: 'Meat & Fish', icon: '🥩' },
+  { id: 'bakery', label: 'Bakery', icon: '🍞' },
+  { id: 'frozen', label: 'Frozen', icon: '🧊' },
+  { id: 'drinks', label: 'Drinks', icon: '🥤' },
+  { id: 'snacks', label: 'Snacks', icon: '🍿' },
+  { id: 'household', label: 'Household', icon: '🧹' },
+  { id: 'other', label: 'Other', icon: '📦' },
+];
+
+function catOf(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES.at(-1); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+// ── App state ──
+const state = {
+  screen: 'loading',     // loading | signin | list
+  accessToken: null,
+  user: null,             // { name, email, picture }
+  fileId: null,
+  items: [],
+  localVersion: 0,
+  inputValue: '',
+  selectedCategory: 'other',
+  showCategoryPicker: false,
+  showChecked: false,
+  showUserMenu: false,
+  showSharePanel: false,
+  shareEmail: '',
+  shareMsg: null,
+  editingId: null,
+  editText: '',
+  toast: null,
+  syncing: false,
+};
+
+let tokenClient = null;
+let syncTimer = null;
+
+// ╔══════════════════════════════════════════════════╗
+// ║  Google Auth                                      ║
+// ╚══════════════════════════════════════════════════╝
+function initAuth() {
+  if (typeof google === 'undefined' || !google.accounts) {
+    setTimeout(initAuth, 200);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: onTokenResponse,
+  });
+  state.screen = 'signin';
+  render();
+}
+
+function signIn() {
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+async function onTokenResponse(resp) {
+  if (resp.error) { console.error(resp); return; }
+  state.accessToken = resp.access_token;
+  state.screen = 'loading';
+  render();
+
+  // Fetch user info
+  try {
+    const r = await gapi('https://www.googleapis.com/oauth2/v2/userinfo');
+    state.user = { name: r.name, email: r.email, picture: r.picture };
+  } catch(e) {
+    state.user = { name: 'User', email: '', picture: '' };
+  }
+
+  await findOrCreateFile();
+  await loadList();
+  state.screen = 'list';
+  render();
+  syncTimer = setInterval(() => loadList(true), SYNC_INTERVAL);
+}
+
+function signOut() {
+  if (state.accessToken) {
+    google.accounts.oauth2.revoke(state.accessToken);
+  }
+  clearInterval(syncTimer);
+  Object.assign(state, {
+    screen: 'signin', accessToken: null, user: null, fileId: null,
+    items: [], showUserMenu: false, showSharePanel: false,
+  });
+  render();
+}
+
+// ╔══════════════════════════════════════════════════╗
+// ║  Google Drive helpers                             ║
+// ╚══════════════════════════════════════════════════╝
+async function gapi(url, options = {}) {
+  const r = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${state.accessToken}`,
+      ...(options.headers || {}),
+    },
+  });
+  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+async function findOrCreateFile() {
+  // Search for existing file (owned or shared with me)
+  const q = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false`);
+  const search = await gapi(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`
+  );
+  if (search.files && search.files.length > 0) {
+    state.fileId = search.files[0].id;
+    return;
+  }
+  // Create new file
+  const metadata = { name: LIST_FILENAME, mimeType: 'application/json' };
+  const initData = JSON.stringify({ items: [], version: Date.now() });
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', new Blob([initData], { type: 'application/json' }));
+
+  const created = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+    { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
+  ).then(r => r.json());
+  state.fileId = created.id;
+}
+
+async function loadList(silent = false) {
+  if (!state.fileId || !state.accessToken) return;
+  if (!silent) { state.syncing = true; render(); }
+  try {
+    const data = await gapi(
+      `https://www.googleapis.com/drive/v3/files/${state.fileId}?alt=media`
+    );
+    if (data.version > state.localVersion) {
+      state.items = data.items || [];
+      state.localVersion = data.version;
+      render();
+    }
+  } catch (e) {
+    console.warn('Load failed:', e);
+  }
+  state.syncing = false;
+  if (!silent) render();
+}
+
+async function saveList() {
+  if (!state.fileId || !state.accessToken) return;
+  state.localVersion = Date.now();
+  const data = JSON.stringify({ items: state.items, version: state.localVersion });
+  await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${state.fileId}?uploadType=media`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${state.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: data,
+    }
+  );
+}
+
+async function shareWith(email) {
+  if (!state.fileId || !email) return;
+  state.shareMsg = null;
+  render();
+  try {
+    await fetch(
+      `https://www.googleapis.com/drive/v3/files/${state.fileId}/permissions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email }),
+      }
+    ).then(async r => {
+      if (!r.ok) throw new Error(await r.text());
+    });
+    state.shareMsg = { ok: true, text: `Shared with ${email}` };
+    state.shareEmail = '';
+    showToast('List shared!');
+  } catch (e) {
+    state.shareMsg = { ok: false, text: 'Could not share. Check the email address.' };
+  }
+  render();
+}
+
+// ╔══════════════════════════════════════════════════╗
+// ║  List actions                                     ║
+// ╚══════════════════════════════════════════════════╝
+function addItem() {
+  const text = state.inputValue.trim();
+  if (!text) return;
+  state.items.unshift({
+    id: uid(), text, category: state.selectedCategory,
+    checked: false, addedAt: new Date().toISOString(),
+  });
+  state.inputValue = '';
+  state.showCategoryPicker = false;
+  render();
+  saveList();
+  document.getElementById('item-input')?.focus();
+}
+
+function toggleItem(id) {
+  const item = state.items.find(i => i.id === id);
+  if (item) { item.checked = !item.checked; item.checkedAt = new Date().toISOString(); }
+  render(); saveList();
+}
+
+function removeItem(id) {
+  state.items = state.items.filter(i => i.id !== id);
+  render(); saveList();
+}
+
+function startEdit(item) {
+  state.editingId = item.id;
+  state.editText = item.text;
+  render();
+  setTimeout(() => document.getElementById('edit-input')?.focus(), 10);
+}
+
+function saveEdit(id) {
+  if (!state.editText.trim()) return;
+  const item = state.items.find(i => i.id === id);
+  if (item) item.text = state.editText.trim();
+  state.editingId = null;
+  render(); saveList();
+}
+
+function clearChecked() {
+  state.items = state.items.filter(i => !i.checked);
+  render(); saveList();
+}
+
+function showToast(msg) {
+  state.toast = msg;
+  render();
+  setTimeout(() => { state.toast = null; render(); }, 2600);
+}
+
+// ╔══════════════════════════════════════════════════╗
+// ║  Renderer                                         ║
+// ╚══════════════════════════════════════════════════╝
+function h(tag, attrs, ...children) {
+  return { tag, attrs: attrs || {}, children: children.flat().filter(c => c != null && c !== false) };
+}
+
+function renderNode(vnode) {
+  if (typeof vnode === 'string' || typeof vnode === 'number') return document.createTextNode(vnode);
+  const el = document.createElement(vnode.tag);
+  for (const [k, v] of Object.entries(vnode.attrs)) {
+    if (k === 'style' && typeof v === 'object') {
+      Object.assign(el.style, v);
+    } else if (k.startsWith('on') && typeof v === 'function') {
+      el.addEventListener(k.slice(2).toLowerCase(), v);
+    } else if (k === 'className') {
+      el.className = v;
+    } else {
+      el.setAttribute(k, v);
+    }
+  }
+  for (const child of vnode.children) {
+    el.appendChild(renderNode(child));
+  }
+  return el;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  let tree;
+
+  if (state.screen === 'loading') {
+    tree = h('div', { className: 'loading' },
+      h('div', { className: 'spinner' }),
+      h('div', { style: { color: 'var(--text-muted)', fontSize: '15px' } }, 'Loading...')
+    );
+  } else if (state.screen === 'signin') {
+    tree = renderSignIn();
+  } else {
+    tree = renderList();
+  }
+
+  app.innerHTML = '';
+  app.appendChild(renderNode(tree));
+}
+
+function renderSignIn() {
+  return h('div', { className: 'signin-screen' },
+    h('div', { className: 'signin-logo' }, '🛒'),
+    h('div', { className: 'signin-title' }, 'Shopping List'),
+    h('div', { className: 'signin-subtitle' }, 'A shared list that syncs through Google Drive. Sign in to get started.'),
+    h('button', { className: 'signin-btn', onClick: signIn },
+      h('svg', { width: '20', height: '20', viewBox: '0 0 48 48' },
+        h('path', { fill: '#EA4335', d: 'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z' }),
+        h('path', { fill: '#4285F4', d: 'M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z' }),
+        h('path', { fill: '#FBBC05', d: 'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z' }),
+        h('path', { fill: '#34A853', d: 'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z' }),
+      ),
+      'Sign in with Google'
+    )
+  );
+}
+
+function renderList() {
+  const unchecked = state.items.filter(i => !i.checked);
+  const checked = state.items.filter(i => i.checked);
+  const grouped = CATEGORIES.map(cat => ({
+    ...cat, items: unchecked.filter(i => i.category === cat.id)
+  })).filter(g => g.items.length > 0);
+
+  const children = [
+    // Header
+    h('header', { className: 'header' },
+      h('div', { className: 'header-row' },
+        h('div', {},
+          h('h1', {}, 'Shopping List'),
+          h('div', { className: 'header-meta' },
+            `${unchecked.length} item${unchecked.length !== 1 ? 's' : ''} to get`,
+            state.syncing ? ' ⟳' : ''
+          ),
+        ),
+        h('div', { className: 'header-actions' },
+          h('button', { className: 'header-btn', onClick: () => { state.showSharePanel = !state.showSharePanel; state.showUserMenu = false; render(); }, title: 'Share list' }, '👥'),
+          h('button', { className: 'header-btn', onClick: () => loadList(false), title: 'Sync' }, '↻'),
+          state.user?.picture
+            ? h('img', { className: 'user-avatar', src: state.user.picture, referrerpolicy: 'no-referrer', onClick: () => { state.showUserMenu = !state.showUserMenu; state.showSharePanel = false; render(); } })
+            : h('button', { className: 'header-btn', onClick: () => { state.showUserMenu = !state.showUserMenu; render(); } }, '👤'),
+        ),
+      ),
+    ),
+  ];
+
+  // User menu
+  if (state.showUserMenu) {
+    children.push(
+      h('div', { className: 'user-menu' },
+        state.user?.email ? h('div', { className: 'user-menu-email' }, state.user.email) : null,
+        h('button', { className: 'user-menu-item danger', onClick: signOut }, '↩ Sign out'),
+      )
+    );
+  }
+
+  // Share panel
+  if (state.showSharePanel) {
+    children.push(
+      h('div', { className: 'share-panel' },
+        h('h3', {}, 'Share this list'),
+        h('div', { className: 'share-row' },
+          h('input', {
+            className: 'share-input', type: 'email',
+            placeholder: "Partner's email",
+            value: state.shareEmail,
+            onInput: (e) => { state.shareEmail = e.target.value; },
+          }),
+          h('button', {
+            className: 'share-btn',
+            onClick: () => shareWith(state.shareEmail),
+          }, 'Share'),
+        ),
+        state.shareMsg
+          ? h('div', { className: `share-msg ${state.shareMsg.ok ? 'ok' : 'err'}` }, state.shareMsg.text)
+          : null,
+      )
+    );
+  }
+
+  // Main content
+  const mainChildren = [];
+
+  if (unchecked.length === 0 && checked.length === 0) {
+    mainChildren.push(h('div', { className: 'empty' },
+      h('span', { className: 'empty-icon' }, '🛒'),
+      h('div', { className: 'empty-title' }, 'Your list is empty'),
+      h('div', { className: 'empty-hint' }, 'Add items below to get started'),
+    ));
+  } else if (unchecked.length === 0) {
+    mainChildren.push(h('div', { className: 'empty' },
+      h('span', { className: 'empty-icon' }, '✅'),
+      h('div', { className: 'empty-title' }, 'All done!'),
+      h('div', { className: 'empty-hint' }, 'Everything has been checked off'),
+    ));
+  }
+
+  // Grouped items
+  for (const group of grouped) {
+    const groupItems = group.items.map(item =>
+      h('div', { className: 'item' },
+        h('div', {
+          className: 'item-check',
+          onClick: () => toggleItem(item.id),
+        }),
+        state.editingId === item.id
+          ? h('input', {
+              id: 'edit-input', className: 'item-edit', value: state.editText,
+              onInput: (e) => { state.editText = e.target.value; },
+              onBlur: () => saveEdit(item.id),
+              onKeydown: (e) => {
+                if (e.key === 'Enter') saveEdit(item.id);
+                if (e.key === 'Escape') { state.editingId = null; render(); }
+              },
+            })
+          : h('span', { className: 'item-text', onClick: () => startEdit(item) }, item.text),
+        h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+      )
+    );
+    mainChildren.push(
+      h('div', { className: 'group' },
+        h('div', { className: 'group-header' },
+          h('span', { className: 'group-icon' }, group.icon),
+          h('span', { className: 'group-label' }, group.label),
+          h('span', { className: 'group-count' }, String(group.items.length)),
+        ),
+        ...groupItems,
+      )
+    );
+  }
+
+  // Checked items
+  if (checked.length > 0) {
+    const checkedChildren = [
+      h('button', { className: 'checked-toggle', onClick: () => { state.showChecked = !state.showChecked; render(); } },
+        h('span', {}, state.showChecked ? '▾' : '▸'),
+        h('span', {}, `Got it (${checked.length})`),
+        state.showChecked
+          ? h('button', { className: 'clear-all-btn', onClick: (e) => { e.stopPropagation(); clearChecked(); } }, 'Clear all')
+          : null,
+      ),
+    ];
+    if (state.showChecked) {
+      for (const item of checked) {
+        checkedChildren.push(
+          h('div', { className: 'item' },
+            h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
+            h('span', { className: 'item-text checked' }, item.text),
+            h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+          )
+        );
+      }
+    }
+    mainChildren.push(h('div', {}, ...checkedChildren));
+  }
+
+  mainChildren.push(h('div', { className: 'spacer' }));
+  children.push(h('main', { className: 'main' }, ...mainChildren));
+
+  // Input bar
+  const inputBarChildren = [];
+  if (state.showCategoryPicker) {
+    inputBarChildren.push(
+      h('div', { className: 'category-picker' },
+        ...CATEGORIES.map(cat =>
+          h('button', {
+            className: `cat-chip ${state.selectedCategory === cat.id ? 'active' : ''}`,
+            onClick: () => {
+              state.selectedCategory = cat.id;
+              state.showCategoryPicker = false;
+              render();
+              document.getElementById('item-input')?.focus();
+            },
+          },
+            h('span', {}, cat.icon),
+            h('span', { className: 'cat-chip-label' }, cat.label),
+          )
+        ),
+      )
+    );
+  }
+  inputBarChildren.push(
+    h('div', { className: 'input-row' },
+      h('button', {
+        className: `cat-btn ${state.showCategoryPicker ? 'active' : ''}`,
+        onClick: () => { state.showCategoryPicker = !state.showCategoryPicker; render(); },
+      }, catOf(state.selectedCategory).icon),
+      h('input', {
+        id: 'item-input', className: 'input-field',
+        placeholder: 'Add an item...', value: state.inputValue,
+        onInput: (e) => { state.inputValue = e.target.value; },
+        onKeydown: (e) => { if (e.key === 'Enter') addItem(); },
+      }),
+      h('button', {
+        className: `add-btn ${state.inputValue.trim() ? 'active' : ''}`,
+        onClick: addItem,
+      }, '+'),
+    )
+  );
+  children.push(h('div', { className: 'input-bar' }, ...inputBarChildren));
+
+  // Toast
+  if (state.toast) {
+    children.push(h('div', { className: 'toast' }, state.toast));
+  }
+
+  return h('div', { className: 'app' }, ...children);
+}
+
+// ── Start ──
+document.addEventListener('DOMContentLoaded', () => {
+  render();
+  initAuth();
+});
+</script>
+</body>
+</html>
