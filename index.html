@@ -126,6 +126,15 @@
     .share-msg { font-size: 13px; margin-top: 8px; }
     .share-msg.ok { color: var(--green-600); }
     .share-msg.err { color: var(--danger); }
+    .share-info { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .share-info-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .share-person {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; color: var(--text-primary);
+    }
+    .share-person-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green-500); flex-shrink: 0;
+    }
+    .share-not-yet { font-size: 13px; color: var(--text-muted); font-style: italic; }
 
     /* ── Main ── */
     .main { padding: 8px 16px; }
@@ -312,6 +321,9 @@ const i18n = {
     clearAll: 'Clear all',
     signOut: '↩ Sign out',
     frequent: '⚡ Frequent',
+    sharedWithLabel: 'Shared with',
+    ownedBy: (e) => `List owned by ${e}`,
+    notSharedYet: 'Not shared yet — add a partner below',
     categories: {
       produce: 'Produce', dairy: 'Dairy', meat: 'Meat & Fish', bakery: 'Bakery',
       frozen: 'Frozen', drinks: 'Drinks', snacks: 'Snacks', household: 'Household', other: 'Other',
@@ -337,6 +349,9 @@ const i18n = {
     clearAll: 'Esborra tot',
     signOut: '↩ Tanca sessió',
     frequent: '⚡ Freqüents',
+    sharedWithLabel: 'Compartit amb',
+    ownedBy: (e) => `Llista de ${e}`,
+    notSharedYet: 'Encara no compartida — afegeix una parella a continuació',
     categories: {
       produce: 'Fruita i Verdura', dairy: 'Lactis', meat: 'Carn i Peix', bakery: 'Forn',
       frozen: 'Congelats', drinks: 'Begudes', snacks: 'Snacks', household: 'Llar', other: 'Altres',
@@ -393,6 +408,8 @@ const state = {
   toast: null,
   syncing: false,
   lang: 'en',
+  sharedWith: [],       // [{ email, role }] — other people on this list
+  isOwner: true,        // whether current user owns the list file
 };
 
 let tokenClient = null;
@@ -582,7 +599,7 @@ function signOut() {
   Object.assign(state, {
     screen: 'signin', accessToken: null, user: null, fileId: null, freqFileId: null,
     items: [], frequency: {}, showUserMenu: false, showSharePanel: false,
-
+    sharedWith: [], isOwner: true,
   });
   isInitialLoad = true;
   render();
@@ -637,14 +654,46 @@ async function gapi(url, options = {}) {
 }
 
 async function findOrCreateFiles() {
-  // Find shopping list file
+  // Search for ALL shopping list files (owned + shared with me)
   const q1 = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false`);
   const search1 = await gapi(
-    `https://www.googleapis.com/drive/v3/files?q=${q1}&spaces=drive&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`
+    `https://www.googleapis.com/drive/v3/files?q=${q1}&spaces=drive&fields=files(id,name,owners,shared,modifiedTime)&orderBy=modifiedTime desc`
   );
+
   if (search1.files && search1.files.length > 0) {
-    state.fileId = search1.files[0].id;
+    const myEmail = state.user?.email?.toLowerCase() || '';
+
+    // Prefer a file shared WITH me (I'm not the owner) — that's the collaborative one
+    const sharedFile = search1.files.find(f =>
+      f.owners && !f.owners.some(o => o.emailAddress?.toLowerCase() === myEmail)
+    );
+    const ownedFile = search1.files.find(f =>
+      f.owners && f.owners.some(o => o.emailAddress?.toLowerCase() === myEmail)
+    );
+
+    if (sharedFile) {
+      // Prefer the shared file — this is the partner's list I was invited to
+      state.fileId = sharedFile.id;
+      state.isOwner = false;
+      // If I also have my own duplicate, delete it silently
+      if (ownedFile) {
+        try {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${ownedFile.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.accessToken}` },
+          });
+        } catch(e) { console.warn('Could not remove duplicate file:', e); }
+      }
+    } else if (ownedFile) {
+      state.fileId = ownedFile.id;
+      state.isOwner = true;
+    } else {
+      // Fallback: use the first result
+      state.fileId = search1.files[0].id;
+      state.isOwner = true;
+    }
   } else {
+    // No file found — create a new one
     const metadata = { name: LIST_FILENAME, mimeType: 'application/json' };
     const initData = JSON.stringify({ items: [], version: Date.now() });
     const form = new FormData();
@@ -655,7 +704,11 @@ async function findOrCreateFiles() {
       { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
     ).then(r => r.json());
     state.fileId = created.id;
+    state.isOwner = true;
   }
+
+  // Load who the list is shared with
+  await loadPermissions();
 
   // Find frequency file (personal, not shared)
   const q2 = encodeURIComponent(`name='${FREQ_FILENAME}' and trashed=false`);
@@ -664,6 +717,22 @@ async function findOrCreateFiles() {
   );
   if (search2.files && search2.files.length > 0) {
     state.freqFileId = search2.files[0].id;
+  }
+}
+
+async function loadPermissions() {
+  if (!state.fileId) return;
+  try {
+    const perms = await gapi(
+      `https://www.googleapis.com/drive/v3/files/${state.fileId}/permissions?fields=permissions(emailAddress,role,type)`
+    );
+    const myEmail = state.user?.email?.toLowerCase() || '';
+    state.sharedWith = (perms.permissions || [])
+      .filter(p => p.type === 'user' && p.emailAddress?.toLowerCase() !== myEmail)
+      .map(p => ({ email: p.emailAddress, role: p.role }));
+  } catch(e) {
+    console.warn('Could not load permissions:', e);
+    state.sharedWith = [];
   }
 }
 
@@ -711,6 +780,7 @@ async function shareWith(email) {
         body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email }),
       }
     ).then(async r => { if (!r.ok) throw new Error(await r.text()); });
+    await loadPermissions();
     const fn = t('sharedWith');
     state.shareMsg = { ok: true, text: fn(email) };
     state.shareEmail = '';
@@ -888,20 +958,50 @@ function renderList() {
 
   // Share panel
   if (state.showSharePanel) {
-    children.push(
-      h('div', { className: 'share-panel' },
-        h('h3', {}, t('shareTitle')),
-        h('div', { className: 'share-row' },
+    const shareChildren = [
+      h('h3', {}, t('shareTitle')),
+    ];
+
+    // Show current sharing status
+    if (state.sharedWith.length > 0) {
+      shareChildren.push(
+        h('div', { className: 'share-info' },
+          h('div', { className: 'share-info-label' }, t('sharedWithLabel')),
+          ...state.sharedWith.map(p =>
+            h('div', { className: 'share-person' },
+              h('span', { className: 'share-person-dot' }),
+              h('span', {}, p.email),
+            )
+          ),
+        )
+      );
+    } else {
+      shareChildren.push(
+        h('div', { className: 'share-info' },
+          h('div', { className: 'share-not-yet' }, t('notSharedYet')),
+        )
+      );
+    }
+
+    // Share input (only if owner)
+    if (state.isOwner) {
+      shareChildren.push(
+        h('div', { className: 'share-row', style: { marginTop: '10px' } },
           h('input', {
             className: 'share-input', type: 'email',
             placeholder: t('sharePlaceholder'), value: state.shareEmail,
             onInput: (e) => { state.shareEmail = e.target.value; },
           }),
           h('button', { className: 'share-btn', onClick: () => shareWith(state.shareEmail) }, t('shareBtn')),
-        ),
-        state.shareMsg ? h('div', { className: `share-msg ${state.shareMsg.ok ? 'ok' : 'err'}` }, state.shareMsg.text) : null,
-      )
-    );
+        )
+      );
+    }
+
+    if (state.shareMsg) {
+      shareChildren.push(h('div', { className: `share-msg ${state.shareMsg.ok ? 'ok' : 'err'}` }, state.shareMsg.text));
+    }
+
+    children.push(h('div', { className: 'share-panel' }, ...shareChildren));
   }
 
   // Main content
