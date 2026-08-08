@@ -296,6 +296,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
+const APP_VERSION = 'v0.4';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -952,6 +953,7 @@ function renderList() {
         state.user?.email ? h('div', { className: 'user-menu-email' }, state.user.email) : null,
         renderLangToggle('user-menu-lang'),
         h('button', { className: 'user-menu-item danger', onClick: signOut }, t('signOut')),
+        h('div', { style: { padding: '6px 16px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: '4px' } }, APP_VERSION),
       )
     );
   }
