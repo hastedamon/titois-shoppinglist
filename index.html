@@ -291,12 +291,12 @@
 // ║  CONFIGURATION — Replace with your OAuth ID      ║
 // ╚══════════════════════════════════════════════════╝
 const CLIENT_ID = '791815265532-1h4e02ln3h6ob4p3r1d20qf5r2p7pgea.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const SCOPES = 'https://www.googleapis.com/auth/drive';
 const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.4';
+const APP_VERSION = 'v0.5';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -655,44 +655,37 @@ async function gapi(url, options = {}) {
 }
 
 async function findOrCreateFiles() {
-  // Search for ALL shopping list files (owned + shared with me)
-  const q1 = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false`);
-  const search1 = await gapi(
-    `https://www.googleapis.com/drive/v3/files?q=${q1}&spaces=drive&fields=files(id,name,owners,shared,modifiedTime)&orderBy=modifiedTime desc`
+  // Search for files I OWN
+  const qOwned = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false and 'me' in owners`);
+  const searchOwned = await gapi(
+    `https://www.googleapis.com/drive/v3/files?q=${qOwned}&spaces=drive&fields=files(id,name,owners,modifiedTime)&orderBy=modifiedTime desc`
   );
 
-  if (search1.files && search1.files.length > 0) {
-    const myEmail = state.user?.email?.toLowerCase() || '';
+  // Search for files SHARED WITH ME
+  const qShared = encodeURIComponent(`name='${LIST_FILENAME}' and trashed=false and sharedWithMe=true`);
+  const searchShared = await gapi(
+    `https://www.googleapis.com/drive/v3/files?q=${qShared}&spaces=drive&fields=files(id,name,owners,modifiedTime)&orderBy=modifiedTime desc`
+  );
 
-    // Prefer a file shared WITH me (I'm not the owner) — that's the collaborative one
-    const sharedFile = search1.files.find(f =>
-      f.owners && !f.owners.some(o => o.emailAddress?.toLowerCase() === myEmail)
-    );
-    const ownedFile = search1.files.find(f =>
-      f.owners && f.owners.some(o => o.emailAddress?.toLowerCase() === myEmail)
-    );
+  const ownedFile = (searchOwned.files && searchOwned.files.length > 0) ? searchOwned.files[0] : null;
+  const sharedFile = (searchShared.files && searchShared.files.length > 0) ? searchShared.files[0] : null;
 
-    if (sharedFile) {
-      // Prefer the shared file — this is the partner's list I was invited to
-      state.fileId = sharedFile.id;
-      state.isOwner = false;
-      // If I also have my own duplicate, delete it silently
-      if (ownedFile) {
-        try {
-          await fetch(`https://www.googleapis.com/drive/v3/files/${ownedFile.id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${state.accessToken}` },
-          });
-        } catch(e) { console.warn('Could not remove duplicate file:', e); }
-      }
-    } else if (ownedFile) {
-      state.fileId = ownedFile.id;
-      state.isOwner = true;
-    } else {
-      // Fallback: use the first result
-      state.fileId = search1.files[0].id;
-      state.isOwner = true;
+  if (sharedFile) {
+    // Prefer the shared file — this is the partner's list I was invited to
+    state.fileId = sharedFile.id;
+    state.isOwner = false;
+    // If I also have my own duplicate, delete it silently
+    if (ownedFile) {
+      try {
+        await fetch(`https://www.googleapis.com/drive/v3/files/${ownedFile.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${state.accessToken}` },
+        });
+      } catch(e) { console.warn('Could not remove duplicate file:', e); }
     }
+  } else if (ownedFile) {
+    state.fileId = ownedFile.id;
+    state.isOwner = true;
   } else {
     // No file found — create a new one
     const metadata = { name: LIST_FILENAME, mimeType: 'application/json' };
