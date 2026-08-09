@@ -276,7 +276,42 @@
       100% { opacity: 0; }
     }
 
-    .spacer { height: 140px; }
+    .spacer { height: 160px; }
+
+    /* ── Autocomplete ── */
+    .autocomplete {
+      position: absolute; bottom: 100%; left: 0; right: 0;
+      background: #fff; border: 1px solid var(--border); border-bottom: none;
+      border-radius: var(--radius) var(--radius) 0 0;
+      max-height: 200px; overflow-y: auto;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+    }
+    .autocomplete-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; cursor: pointer; font-size: 15px;
+      border-bottom: 1px solid #f0f2ec; color: var(--text-primary);
+    }
+    .autocomplete-item:hover, .autocomplete-item.selected {
+      background: var(--green-50);
+    }
+    .autocomplete-icon { font-size: 14px; }
+    .autocomplete-text { flex: 1; }
+    .autocomplete-hint { font-size: 12px; color: var(--text-muted); }
+
+    /* ── Quantity ── */
+    .qty-field {
+      width: 52px; height: 42px; border-radius: var(--radius); border: 1px solid var(--border);
+      padding: 0 8px; font-size: 14px; background: #fff; outline: none;
+      color: var(--text-primary); text-align: center; flex-shrink: 0;
+    }
+    .qty-field:focus { border-color: var(--green-500); }
+    .qty-field::placeholder { color: #c0c8bc; }
+    .item-qty {
+      font-size: 13px; color: var(--green-600); font-weight: 600;
+      background: var(--green-100); border-radius: 6px; padding: 2px 7px;
+      flex-shrink: 0; white-space: nowrap;
+    }
+    .item-qty.checked { color: var(--text-muted); background: #eee; }
   </style>
 </head>
 <body>
@@ -296,7 +331,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.5';
+const APP_VERSION = 'v0.6';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -308,6 +343,7 @@ const i18n = {
     signinBtn: 'Sign in with Google',
     itemsToGet: (n) => `${n} item${n !== 1 ? 's' : ''} to get`,
     addPlaceholder: 'Add an item...',
+    qtyPlaceholder: 'Qty',
     shareTitle: 'Share this list',
     sharePlaceholder: "Partner's email",
     shareBtn: 'Share',
@@ -336,6 +372,7 @@ const i18n = {
     signinBtn: 'Inicia sessió amb Google',
     itemsToGet: (n) => `${n} article${n !== 1 ? 's' : ''} per comprar`,
     addPlaceholder: 'Afegeix un article...',
+    qtyPlaceholder: 'Qnt',
     shareTitle: 'Comparteix la llista',
     sharePlaceholder: 'Correu de la parella',
     shareBtn: 'Comparteix',
@@ -409,6 +446,9 @@ const state = {
   toast: null,
   syncing: false,
   lang: 'en',
+  qtyValue: '',
+  autocompleteSuggestions: [],
+  autocompleteIndex: -1,
   sharedWith: [],       // [{ email, role }] — other people on this list
   isOwner: true,        // whether current user owns the list file
 };
@@ -786,19 +826,54 @@ async function shareWith(email) {
 }
 
 // ╔══════════════════════════════════════════════════╗
+// ║  Autocomplete                                     ║
+// ╚══════════════════════════════════════════════════╝
+function updateAutocomplete(text) {
+  state.inputValue = text;
+  const query = text.trim().toLowerCase();
+  if (query.length < 1) {
+    state.autocompleteSuggestions = [];
+    state.autocompleteIndex = -1;
+    render();
+    return;
+  }
+  // Search frequency data for matches
+  const currentTexts = new Set(state.items.filter(i => !i.checked).map(i => normalizeText(i.text)));
+  state.autocompleteSuggestions = Object.values(state.frequency)
+    .filter(f => normalizeText(f.text).includes(query) && !currentTexts.has(normalizeText(f.text)))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  state.autocompleteIndex = -1;
+  render();
+}
+
+function selectAutocomplete(suggestion) {
+  state.inputValue = suggestion.text;
+  state.selectedCategory = suggestion.category;
+  state.autocompleteSuggestions = [];
+  state.autocompleteIndex = -1;
+  render();
+  document.getElementById('item-input')?.focus();
+}
+
+// ╔══════════════════════════════════════════════════╗
 // ║  List actions                                     ║
 // ╚══════════════════════════════════════════════════╝
 function addItem() {
   const text = state.inputValue.trim();
   if (!text) return;
+  const qty = state.qtyValue.trim();
   const newItem = {
     id: uid(), text, category: state.selectedCategory,
-    checked: false, addedAt: new Date().toISOString(),
+    qty: qty || '', checked: false, addedAt: new Date().toISOString(),
   };
   state.items.unshift(newItem);
   trackFrequency(text, state.selectedCategory);
   state.inputValue = '';
+  state.qtyValue = '';
   state.showCategoryPicker = false;
+  state.autocompleteSuggestions = [];
+  state.autocompleteIndex = -1;
   render();
   saveList();
   document.getElementById('item-input')?.focus();
@@ -1039,6 +1114,7 @@ function renderList() {
     const groupItems = group.items.map(item =>
       h('div', { className: 'item' },
         h('div', { className: 'item-check', onClick: () => toggleItem(item.id) }),
+        item.qty ? h('span', { className: 'item-qty' }, item.qty) : null,
         state.editingId === item.id
           ? h('input', {
               id: 'edit-input', className: 'item-edit', value: state.editText,
@@ -1081,6 +1157,7 @@ function renderList() {
         checkedChildren.push(
           h('div', { className: 'item' },
             h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
+            item.qty ? h('span', { className: 'item-qty checked' }, item.qty) : null,
             h('span', { className: 'item-text checked' }, item.text),
             h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
           )
@@ -1122,10 +1199,37 @@ function renderList() {
         onClick: () => { state.showCategoryPicker = !state.showCategoryPicker; render(); },
       }, catOf(state.selectedCategory).icon),
       h('input', {
+        className: 'qty-field',
+        placeholder: t('qtyPlaceholder'), value: state.qtyValue,
+        onInput: (e) => { state.qtyValue = e.target.value; },
+        onKeydown: (e) => { if (e.key === 'Enter') addItem(); },
+      }),
+      h('input', {
         id: 'item-input', className: 'input-field',
         placeholder: t('addPlaceholder'), value: state.inputValue,
-        onInput: (e) => { state.inputValue = e.target.value; },
-        onKeydown: (e) => { if (e.key === 'Enter') addItem(); },
+        onInput: (e) => { updateAutocomplete(e.target.value); },
+        onKeydown: (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            state.autocompleteIndex = Math.min(state.autocompleteIndex + 1, state.autocompleteSuggestions.length - 1);
+            render();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            state.autocompleteIndex = Math.max(state.autocompleteIndex - 1, -1);
+            render();
+          } else if (e.key === 'Enter') {
+            if (state.autocompleteIndex >= 0 && state.autocompleteSuggestions[state.autocompleteIndex]) {
+              selectAutocomplete(state.autocompleteSuggestions[state.autocompleteIndex]);
+            } else {
+              addItem();
+            }
+          } else if (e.key === 'Escape') {
+            state.autocompleteSuggestions = [];
+            state.autocompleteIndex = -1;
+            render();
+          }
+        },
+        onBlur: () => { setTimeout(() => { state.autocompleteSuggestions = []; state.autocompleteIndex = -1; render(); }, 200); },
       }),
       h('button', {
         className: `add-btn ${state.inputValue.trim() ? 'active' : ''}`,
@@ -1133,7 +1237,26 @@ function renderList() {
       }, '+'),
     )
   );
-  children.push(h('div', { className: 'input-bar' }, ...inputBarChildren));
+
+  // Autocomplete dropdown (positioned above the input bar)
+  if (state.autocompleteSuggestions.length > 0) {
+    inputBarChildren.push(
+      h('div', { className: 'autocomplete' },
+        ...state.autocompleteSuggestions.map((s, i) =>
+          h('div', {
+            className: `autocomplete-item ${i === state.autocompleteIndex ? 'selected' : ''}`,
+            onMousedown: (e) => { e.preventDefault(); selectAutocomplete(s); },
+          },
+            h('span', { className: 'autocomplete-icon' }, catOf(s.category).icon),
+            h('span', { className: 'autocomplete-text' }, s.text),
+            h('span', { className: 'autocomplete-hint' }, `×${s.count}`),
+          )
+        ),
+      )
+    );
+  }
+
+  children.push(h('div', { className: 'input-bar', style: { position: 'fixed' } }, ...inputBarChildren));
 
   // Toast
   if (state.toast) {
