@@ -177,11 +177,25 @@
     }
 
     /* ── Item rows ── */
+    .item-wrapper {
+      position: relative; overflow: hidden; border-radius: var(--radius);
+      margin-bottom: 4px;
+    }
+    .item-bg {
+      position: absolute; top: 0; bottom: 0; display: flex; align-items: center;
+      padding: 0 20px; font-size: 14px; font-weight: 600; color: #fff;
+    }
+    .item-bg-check { left: 0; right: 50%; background: var(--green-500); justify-content: flex-start; }
+    .item-bg-delete { right: 0; left: 50%; background: var(--danger); justify-content: flex-end; }
     .item {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 12px; background: var(--card-bg); border-radius: var(--radius);
-      margin-bottom: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      position: relative; z-index: 1;
+      transition: transform 0.15s ease-out;
+      touch-action: pan-y;
     }
+    .item.swiping { transition: none; }
     .item-check {
       flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px;
       border: 2px solid #b0c4a8; background: #f8faf6; cursor: pointer;
@@ -332,7 +346,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.6.4';
+const APP_VERSION = 'v0.7';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -358,6 +372,8 @@ const i18n = {
     gotIt: (n) => `Got it (${n})`,
     clearAll: 'Clear all',
     signOut: '↩ Sign out',
+    swipeCheck: '✓ Got it',
+    swipeDelete: '✕ Delete',
     frequent: '⚡ Frequent',
     sharedWithLabel: 'Shared with',
     ownedBy: (e) => `List owned by ${e}`,
@@ -387,6 +403,8 @@ const i18n = {
     gotIt: (n) => `Comprat (${n})`,
     clearAll: 'Esborra tot',
     signOut: '↩ Tanca sessió',
+    swipeCheck: '✓ Comprat',
+    swipeDelete: '✕ Esborrar',
     frequent: '⚡ Freqüents',
     sharedWithLabel: 'Compartit amb',
     ownedBy: (e) => `Llista de ${e}`,
@@ -510,29 +528,36 @@ async function loadFrequency() {
   try {
     const data = await gapi(`https://www.googleapis.com/drive/v3/files/${state.freqFileId}?alt=media`);
     state.frequency = data.frequency || {};
-  } catch(e) {}
+  } catch(e) {
+    console.warn('Could not load frequency data:', e);
+  }
 }
 
 async function saveFrequency() {
   if (!state.accessToken) return;
   const data = JSON.stringify({ frequency: state.frequency });
-  if (state.freqFileId) {
-    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${state.freqFileId}?uploadType=media`, {
-      method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${state.accessToken}`, 'Content-Type': 'application/json' },
-      body: data,
-    });
-  } else {
-    const metadata = { name: FREQ_FILENAME, mimeType: 'application/json' };
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', new Blob([data], { type: 'application/json' }));
-    const created = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-      { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
-    ).then(r => r.json());
-    state.freqFileId = created.id;
+  try {
+    if (state.freqFileId) {
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${state.freqFileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${state.accessToken}`, 'Content-Type': 'application/json' },
+        body: data,
+      });
+    } else {
+      const metadata = { name: FREQ_FILENAME, mimeType: 'application/json' };
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      form.append('file', new Blob([data], { type: 'application/json' }));
+      const created = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method: 'POST', headers: { 'Authorization': `Bearer ${state.accessToken}` }, body: form }
+      ).then(r => r.json());
+      if (created.id) state.freqFileId = created.id;
+    }
+  } catch(e) {
+    console.warn('Could not save frequency data:', e);
   }
+}
 }
 
 // ╔══════════════════════════════════════════════════╗
@@ -849,9 +874,9 @@ function computeAutocomplete(text) {
     renderAutocompleteOnly();
     return;
   }
-  const currentTexts = new Set(state.items.filter(i => !i.checked).map(i => normalizeText(i.text)));
+  // Show all matching items from history — don't filter out items already on the list
   state.autocompleteSuggestions = Object.values(state.frequency)
-    .filter(f => normalizeText(f.text).includes(query) && !currentTexts.has(normalizeText(f.text)))
+    .filter(f => normalizeText(f.text).includes(query))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
   state.autocompleteIndex = -1;
@@ -977,6 +1002,64 @@ function showToast(msg) {
 }
 
 // ╔══════════════════════════════════════════════════╗
+// ║  Swipe gestures                                   ║
+// ╚══════════════════════════════════════════════════╝
+const SWIPE_THRESHOLD = 80;
+
+function attachSwipe(el, itemId) {
+  let startX = 0, startY = 0, currentX = 0, isSwiping = false, isScrolling = false;
+  const itemEl = el.querySelector('.item');
+
+  el.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentX = 0;
+    isSwiping = false;
+    isScrolling = false;
+    itemEl.classList.add('swiping');
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (isScrolling) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    // Decide direction on first significant move
+    if (!isSwiping && !isScrolling) {
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) {
+        isScrolling = true;
+        itemEl.classList.remove('swiping');
+        itemEl.style.transform = '';
+        return;
+      }
+      if (Math.abs(dx) > 10) isSwiping = true;
+    }
+
+    if (isSwiping) {
+      e.preventDefault();
+      currentX = dx;
+      const clamped = Math.max(-120, Math.min(120, currentX));
+      itemEl.style.transform = `translateX(${clamped}px)`;
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchend', () => {
+    itemEl.classList.remove('swiping');
+    if (!isSwiping) { itemEl.style.transform = ''; return; }
+
+    if (currentX > SWIPE_THRESHOLD) {
+      itemEl.style.transform = 'translateX(100%)';
+      setTimeout(() => toggleItem(itemId), 200);
+    } else if (currentX < -SWIPE_THRESHOLD) {
+      itemEl.style.transform = 'translateX(-100%)';
+      setTimeout(() => removeItem(itemId), 200);
+    } else {
+      itemEl.style.transform = 'translateX(0)';
+    }
+  }, { passive: true });
+}
+
+// ╔══════════════════════════════════════════════════╗
 // ║  Renderer                                         ║
 // ╚══════════════════════════════════════════════════╝
 function h(tag, attrs, ...children) {
@@ -1020,6 +1103,13 @@ function render() {
   }
   app.innerHTML = '';
   app.appendChild(renderNode(tree));
+
+  // Attach swipe gestures to item wrappers
+  if (state.screen === 'list') {
+    document.querySelectorAll('.item-wrapper[data-swipe-id]').forEach(el => {
+      attachSwipe(el, el.getAttribute('data-swipe-id'));
+    });
+  }
 }
 
 function renderInputBar() {
@@ -1286,21 +1376,25 @@ function renderList() {
   // Grouped items
   for (const group of grouped) {
     const groupItems = group.items.map(item =>
-      h('div', { className: 'item' },
-        h('div', { className: 'item-check', onClick: () => toggleItem(item.id) }),
-        item.qty ? h('span', { className: 'item-qty' }, item.qty) : null,
-        state.editingId === item.id
-          ? h('input', {
-              id: 'edit-input', className: 'item-edit', value: state.editText,
-              onInput: (e) => { state.editText = e.target.value; },
-              onBlur: () => saveEdit(item.id),
-              onKeydown: (e) => {
-                if (e.key === 'Enter') saveEdit(item.id);
-                if (e.key === 'Escape') { state.editingId = null; render(); }
-              },
-            })
-          : h('span', { className: 'item-text', onClick: () => startEdit(item) }, item.text),
-        h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+      h('div', { className: 'item-wrapper', 'data-swipe-id': item.id },
+        h('div', { className: 'item-bg item-bg-check' }, t('swipeCheck')),
+        h('div', { className: 'item-bg item-bg-delete' }, t('swipeDelete')),
+        h('div', { className: 'item' },
+          h('div', { className: 'item-check', onClick: () => toggleItem(item.id) }),
+          item.qty ? h('span', { className: 'item-qty' }, item.qty) : null,
+          state.editingId === item.id
+            ? h('input', {
+                id: 'edit-input', className: 'item-edit', value: state.editText,
+                onInput: (e) => { state.editText = e.target.value; },
+                onBlur: () => saveEdit(item.id),
+                onKeydown: (e) => {
+                  if (e.key === 'Enter') saveEdit(item.id);
+                  if (e.key === 'Escape') { state.editingId = null; render(); }
+                },
+              })
+            : h('span', { className: 'item-text', onClick: () => startEdit(item) }, item.text),
+          h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+        ),
       )
     );
     mainChildren.push(
@@ -1329,11 +1423,15 @@ function renderList() {
     if (state.showChecked) {
       for (const item of checked) {
         checkedChildren.push(
-          h('div', { className: 'item' },
-            h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
-            item.qty ? h('span', { className: 'item-qty checked' }, item.qty) : null,
-            h('span', { className: 'item-text checked' }, item.text),
-            h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+          h('div', { className: 'item-wrapper', 'data-swipe-id': item.id },
+            h('div', { className: 'item-bg item-bg-check' }, '↩ Undo'),
+            h('div', { className: 'item-bg item-bg-delete' }, t('swipeDelete')),
+            h('div', { className: 'item' },
+              h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
+              item.qty ? h('span', { className: 'item-qty checked' }, item.qty) : null,
+              h('span', { className: 'item-text checked' }, item.text),
+              h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
+            ),
           )
         );
       }
