@@ -317,6 +317,7 @@
 <body>
 
 <div class="app" id="app"></div>
+<div id="input-bar-root"></div>
 
 <!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -331,7 +332,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.6';
+const APP_VERSION = 'v0.6.4';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -467,6 +468,7 @@ function saveLang(lang) {
   try { localStorage.setItem('shopping-list-lang', lang); } catch(e) {}
   document.title = t('appTitle');
   render();
+  renderInputBar();
 }
 
 // ╔══════════════════════════════════════════════════╗
@@ -828,10 +830,20 @@ async function shareWith(email) {
 // ╔══════════════════════════════════════════════════╗
 // ║  Autocomplete                                     ║
 // ╚══════════════════════════════════════════════════╝
-function updateAutocomplete(text) {
-  state.inputValue = text;
+let autocompleteTimer = null;
+
+function onItemInput(e) {
+  state.inputValue = e.target.value;
+  // Debounce autocomplete — wait 250ms after last keystroke
+  clearTimeout(autocompleteTimer);
+  autocompleteTimer = setTimeout(() => {
+    computeAutocomplete(state.inputValue);
+  }, 250);
+}
+
+function computeAutocomplete(text) {
   const query = text.trim().toLowerCase();
-  if (query.length < 1) {
+  if (query.length < 2) {
     state.autocompleteSuggestions = [];
     state.autocompleteIndex = -1;
     renderAutocompleteOnly();
@@ -885,17 +897,27 @@ function selectAutocomplete(suggestion) {
   state.selectedCategory = suggestion.category;
   state.autocompleteSuggestions = [];
   state.autocompleteIndex = -1;
-  render();
-  document.getElementById('item-input')?.focus();
+  clearTimeout(autocompleteTimer);
+  // Set the input value directly on the DOM element
+  const input = document.getElementById('item-input');
+  if (input) input.value = suggestion.text;
+  renderAutocompleteOnly();
+  // Update category button
+  const catBtn = document.querySelector('.cat-btn');
+  if (catBtn) catBtn.textContent = catOf(suggestion.category).icon;
+  input?.focus();
 }
 
 // ╔══════════════════════════════════════════════════╗
 // ║  List actions                                     ║
 // ╚══════════════════════════════════════════════════╝
 function addItem() {
-  const text = state.inputValue.trim();
+  // Read directly from DOM elements — never stale
+  const itemInput = document.getElementById('item-input');
+  const qtyInput = document.getElementById('qty-input');
+  const text = (itemInput?.value || state.inputValue).trim();
   if (!text) return;
-  const qty = state.qtyValue.trim();
+  const qty = (qtyInput?.value || state.qtyValue).trim();
   const newItem = {
     id: uid(), text, category: state.selectedCategory,
     qty: qty || '', checked: false, addedAt: new Date().toISOString(),
@@ -907,9 +929,14 @@ function addItem() {
   state.showCategoryPicker = false;
   state.autocompleteSuggestions = [];
   state.autocompleteIndex = -1;
+  clearTimeout(autocompleteTimer);
+  // Clear inputs directly on the DOM
+  if (itemInput) itemInput.value = '';
+  if (qtyInput) qtyInput.value = '';
+  renderAutocompleteOnly();
   render();
   saveList();
-  document.getElementById('item-input')?.focus();
+  itemInput?.focus();
 }
 
 function toggleItem(id) {
@@ -970,11 +997,6 @@ function renderNode(vnode) {
 }
 
 function render() {
-  // Preserve focus and cursor position across re-renders
-  const activeId = document.activeElement?.id;
-  const selStart = document.activeElement?.selectionStart;
-  const selEnd = document.activeElement?.selectionEnd;
-
   const app = document.getElementById('app');
   let tree;
   if (state.screen === 'loading') {
@@ -984,23 +1006,126 @@ function render() {
     );
   } else if (state.screen === 'signin') {
     tree = renderSignIn();
+    // Hide input bar on non-list screens
+    const ibr = document.getElementById('input-bar-root');
+    if (ibr) ibr.style.display = 'none';
   } else {
     tree = renderList();
+    // Show input bar and rebuild only if nobody is typing
+    const ibr = document.getElementById('input-bar-root');
+    if (ibr) ibr.style.display = 'block';
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (activeEl.id === 'item-input' || activeEl.id === 'qty-input');
+    if (!isTyping) renderInputBar();
   }
   app.innerHTML = '';
   app.appendChild(renderNode(tree));
-
-  // Restore focus and cursor
-  if (activeId) {
-    const el = document.getElementById(activeId);
-    if (el) {
-      el.focus({ preventScroll: true });
-      if (typeof selStart === 'number' && el.setSelectionRange) {
-        try { el.setSelectionRange(selStart, selEnd); } catch(e) {}
-      }
-    }
-  }
 }
+
+function renderInputBar() {
+  const root = document.getElementById('input-bar-root');
+  if (!root) return;
+
+  const children = [];
+
+  // Category picker
+  if (state.showCategoryPicker) {
+    const pickerDiv = document.createElement('div');
+    pickerDiv.className = 'category-picker';
+    CATEGORIES.forEach(cat => {
+      const btn = document.createElement('button');
+      btn.className = 'cat-chip' + (state.selectedCategory === cat.id ? ' active' : '');
+      btn.innerHTML = '<span>' + cat.icon + '</span><span class="cat-chip-label">' + escHtml(tCat(cat.id)) + '</span>';
+      btn.addEventListener('click', () => {
+        state.selectedCategory = cat.id;
+        state.showCategoryPicker = false;
+        renderInputBar();
+        document.getElementById('item-input')?.focus();
+      });
+      pickerDiv.appendChild(btn);
+    });
+    children.push(pickerDiv);
+  }
+
+  // Input row
+  const row = document.createElement('div');
+  row.className = 'input-row';
+
+  const catBtn = document.createElement('button');
+  catBtn.className = 'cat-btn' + (state.showCategoryPicker ? ' active' : '');
+  catBtn.textContent = catOf(state.selectedCategory).icon;
+  catBtn.addEventListener('click', () => {
+    state.showCategoryPicker = !state.showCategoryPicker;
+    renderInputBar();
+  });
+  row.appendChild(catBtn);
+
+  const qtyInput = document.createElement('input');
+  qtyInput.id = 'qty-input';
+  qtyInput.className = 'qty-field';
+  qtyInput.placeholder = t('qtyPlaceholder');
+  qtyInput.addEventListener('input', (e) => { state.qtyValue = e.target.value; });
+  qtyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
+  row.appendChild(qtyInput);
+
+  const itemInput = document.createElement('input');
+  itemInput.id = 'item-input';
+  itemInput.className = 'input-field';
+  itemInput.placeholder = t('addPlaceholder');
+  itemInput.addEventListener('input', onItemInput);
+  itemInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      state.autocompleteIndex = Math.min(state.autocompleteIndex + 1, state.autocompleteSuggestions.length - 1);
+      renderAutocompleteOnly();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      state.autocompleteIndex = Math.max(state.autocompleteIndex - 1, -1);
+      renderAutocompleteOnly();
+    } else if (e.key === 'Enter') {
+      if (state.autocompleteIndex >= 0 && state.autocompleteSuggestions[state.autocompleteIndex]) {
+        selectAutocomplete(state.autocompleteSuggestions[state.autocompleteIndex]);
+      } else {
+        addItem();
+      }
+    } else if (e.key === 'Escape') {
+      state.autocompleteSuggestions = [];
+      state.autocompleteIndex = -1;
+      renderAutocompleteOnly();
+    }
+  });
+  itemInput.addEventListener('blur', () => {
+    setTimeout(() => { state.autocompleteSuggestions = []; state.autocompleteIndex = -1; renderAutocompleteOnly(); }, 200);
+  });
+  row.appendChild(itemInput);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-btn' + (state.inputValue.trim() ? ' active' : '');
+  addBtn.textContent = '+';
+  addBtn.addEventListener('click', addItem);
+  row.appendChild(addBtn);
+
+  children.push(row);
+
+  // Autocomplete container
+  const acContainer = document.createElement('div');
+  acContainer.id = 'autocomplete-container';
+  acContainer.className = 'autocomplete';
+  acContainer.style.display = 'none';
+  children.push(acContainer);
+
+  // Build the bar
+  root.innerHTML = '';
+  const bar = document.createElement('div');
+  bar.className = 'input-bar';
+  children.forEach(c => bar.appendChild(c));
+  root.appendChild(bar);
+
+  // Re-render autocomplete if there were suggestions showing
+  renderAutocompleteOnly();
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function renderLangToggle(cls) {
   return h('div', { className: cls || 'lang-toggle-signin' },
@@ -1218,79 +1343,6 @@ function renderList() {
 
   mainChildren.push(h('div', { className: 'spacer' }));
   children.push(h('main', { className: 'main' }, ...mainChildren));
-
-  // Input bar
-  const inputBarChildren = [];
-  if (state.showCategoryPicker) {
-    inputBarChildren.push(
-      h('div', { className: 'category-picker' },
-        ...CATEGORIES.map(cat =>
-          h('button', {
-            className: `cat-chip ${state.selectedCategory === cat.id ? 'active' : ''}`,
-            onClick: () => {
-              state.selectedCategory = cat.id;
-              state.showCategoryPicker = false;
-              render();
-              document.getElementById('item-input')?.focus();
-            },
-          },
-            h('span', {}, cat.icon),
-            h('span', { className: 'cat-chip-label' }, tCat(cat.id)),
-          )
-        ),
-      )
-    );
-  }
-  inputBarChildren.push(
-    h('div', { className: 'input-row' },
-      h('button', {
-        className: `cat-btn ${state.showCategoryPicker ? 'active' : ''}`,
-        onClick: () => { state.showCategoryPicker = !state.showCategoryPicker; render(); },
-      }, catOf(state.selectedCategory).icon),
-      h('input', {
-        id: 'qty-input', className: 'qty-field',
-        placeholder: t('qtyPlaceholder'), value: state.qtyValue,
-        onInput: (e) => { state.qtyValue = e.target.value; },
-        onKeydown: (e) => { if (e.key === 'Enter') addItem(); },
-      }),
-      h('input', {
-        id: 'item-input', className: 'input-field',
-        placeholder: t('addPlaceholder'), value: state.inputValue,
-        onInput: (e) => { updateAutocomplete(e.target.value); },
-        onKeydown: (e) => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            state.autocompleteIndex = Math.min(state.autocompleteIndex + 1, state.autocompleteSuggestions.length - 1);
-            renderAutocompleteOnly();
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            state.autocompleteIndex = Math.max(state.autocompleteIndex - 1, -1);
-            renderAutocompleteOnly();
-          } else if (e.key === 'Enter') {
-            if (state.autocompleteIndex >= 0 && state.autocompleteSuggestions[state.autocompleteIndex]) {
-              selectAutocomplete(state.autocompleteSuggestions[state.autocompleteIndex]);
-            } else {
-              addItem();
-            }
-          } else if (e.key === 'Escape') {
-            state.autocompleteSuggestions = [];
-            state.autocompleteIndex = -1;
-            renderAutocompleteOnly();
-          }
-        },
-        onBlur: () => { setTimeout(() => { state.autocompleteSuggestions = []; state.autocompleteIndex = -1; renderAutocompleteOnly(); }, 200); },
-      }),
-      h('button', {
-        className: `add-btn ${state.inputValue.trim() ? 'active' : ''}`,
-        onClick: addItem,
-      }, '+'),
-    )
-  );
-
-  // Permanent autocomplete container — updated independently, never causes re-render
-  inputBarChildren.push(h('div', { id: 'autocomplete-container', className: 'autocomplete', style: { display: 'none' } }));
-
-  children.push(h('div', { className: 'input-bar', style: { position: 'fixed' } }, ...inputBarChildren));
 
   // Toast
   if (state.toast) {
