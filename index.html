@@ -1407,7 +1407,6 @@ function renderList() {
         h('div', { className: 'item-bg item-bg-check' }, t('swipeCheck')),
         h('div', { className: 'item-bg item-bg-delete' }, t('swipeDelete')),
         h('div', { className: 'item' },
-          h('div', { className: 'item-check', onClick: () => toggleItem(item.id) }),
           item.qty ? h('span', { className: 'item-qty' }, item.qty) : null,
           state.editingId === item.id
             ? h('input', {
@@ -1460,7 +1459,6 @@ function renderList() {
             h('div', { className: 'item-bg item-bg-check' }, '↩ Undo'),
             h('div', { className: 'item-bg item-bg-delete' }, t('swipeDelete')),
             h('div', { className: 'item' },
-              h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
               item.qty ? h('span', { className: 'item-qty checked' }, item.qty) : null,
               h('span', { className: 'item-text checked' }, item.text),
               item.checkedBy
