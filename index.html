@@ -834,17 +834,50 @@ function updateAutocomplete(text) {
   if (query.length < 1) {
     state.autocompleteSuggestions = [];
     state.autocompleteIndex = -1;
-    render();
+    renderAutocompleteOnly();
     return;
   }
-  // Search frequency data for matches
   const currentTexts = new Set(state.items.filter(i => !i.checked).map(i => normalizeText(i.text)));
   state.autocompleteSuggestions = Object.values(state.frequency)
     .filter(f => normalizeText(f.text).includes(query) && !currentTexts.has(normalizeText(f.text)))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
   state.autocompleteIndex = -1;
-  render();
+  renderAutocompleteOnly();
+}
+
+// Updates ONLY the autocomplete dropdown — never touches the input or anything else
+function renderAutocompleteOnly() {
+  const container = document.getElementById('autocomplete-container');
+  if (!container) return;
+  container.innerHTML = '';
+  if (state.autocompleteSuggestions.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  for (let i = 0; i < state.autocompleteSuggestions.length; i++) {
+    const s = state.autocompleteSuggestions[i];
+    const div = document.createElement('div');
+    div.className = 'autocomplete-item' + (i === state.autocompleteIndex ? ' selected' : '');
+    const icon = document.createElement('span');
+    icon.className = 'autocomplete-icon';
+    icon.textContent = catOf(s.category).icon;
+    const text = document.createElement('span');
+    text.className = 'autocomplete-text';
+    text.textContent = s.text;
+    const hint = document.createElement('span');
+    hint.className = 'autocomplete-hint';
+    hint.textContent = '\u00d7' + s.count;
+    div.appendChild(icon);
+    div.appendChild(text);
+    div.appendChild(hint);
+    div.addEventListener('mousedown', ((suggestion) => (e) => {
+      e.preventDefault();
+      selectAutocomplete(suggestion);
+    })(s));
+    container.appendChild(div);
+  }
 }
 
 function selectAutocomplete(suggestion) {
@@ -1228,11 +1261,11 @@ function renderList() {
           if (e.key === 'ArrowDown') {
             e.preventDefault();
             state.autocompleteIndex = Math.min(state.autocompleteIndex + 1, state.autocompleteSuggestions.length - 1);
-            render();
+            renderAutocompleteOnly();
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             state.autocompleteIndex = Math.max(state.autocompleteIndex - 1, -1);
-            render();
+            renderAutocompleteOnly();
           } else if (e.key === 'Enter') {
             if (state.autocompleteIndex >= 0 && state.autocompleteSuggestions[state.autocompleteIndex]) {
               selectAutocomplete(state.autocompleteSuggestions[state.autocompleteIndex]);
@@ -1242,10 +1275,10 @@ function renderList() {
           } else if (e.key === 'Escape') {
             state.autocompleteSuggestions = [];
             state.autocompleteIndex = -1;
-            render();
+            renderAutocompleteOnly();
           }
         },
-        onBlur: () => { setTimeout(() => { state.autocompleteSuggestions = []; state.autocompleteIndex = -1; render(); }, 200); },
+        onBlur: () => { setTimeout(() => { state.autocompleteSuggestions = []; state.autocompleteIndex = -1; renderAutocompleteOnly(); }, 200); },
       }),
       h('button', {
         className: `add-btn ${state.inputValue.trim() ? 'active' : ''}`,
@@ -1254,23 +1287,8 @@ function renderList() {
     )
   );
 
-  // Autocomplete dropdown (positioned above the input bar)
-  if (state.autocompleteSuggestions.length > 0) {
-    inputBarChildren.push(
-      h('div', { className: 'autocomplete' },
-        ...state.autocompleteSuggestions.map((s, i) =>
-          h('div', {
-            className: `autocomplete-item ${i === state.autocompleteIndex ? 'selected' : ''}`,
-            onMousedown: (e) => { e.preventDefault(); selectAutocomplete(s); },
-          },
-            h('span', { className: 'autocomplete-icon' }, catOf(s.category).icon),
-            h('span', { className: 'autocomplete-text' }, s.text),
-            h('span', { className: 'autocomplete-hint' }, `×${s.count}`),
-          )
-        ),
-      )
-    );
-  }
+  // Permanent autocomplete container — updated independently, never causes re-render
+  inputBarChildren.push(h('div', { id: 'autocomplete-container', className: 'autocomplete', style: { display: 'none' } }));
 
   children.push(h('div', { className: 'input-bar', style: { position: 'fixed' } }, ...inputBarChildren));
 
