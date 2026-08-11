@@ -210,6 +210,13 @@
       text-overflow: ellipsis; cursor: pointer;
     }
     .item-text.checked { color: var(--text-muted); text-decoration: line-through; }
+    .item-by {
+      font-size: 11px; color: var(--text-muted); flex-shrink: 0;
+      display: flex; align-items: center; gap: 3px;
+    }
+    .item-by-dot {
+      width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+    }
     .item-edit {
       flex: 1; font-size: 16px; border: none; border-bottom: 2px solid var(--green-500);
       padding: 2px 0; outline: none; background: transparent; color: var(--text-primary);
@@ -346,7 +353,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.7';
+const APP_VERSION = 'v0.8';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -442,6 +449,21 @@ const CATEGORIES = [
 function catOf(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES.at(-1); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+// Get first name for display
+function myName() {
+  if (!state.user) return '?';
+  return (state.user.name || state.user.email || '?').split(' ')[0];
+}
+
+// Consistent color per person name
+const PERSON_COLORS = ['#5a8a5a', '#6a7bbf', '#bf6a8a', '#b08a4a', '#7a5aaa', '#4a9a9a'];
+function personColor(name) {
+  if (!name) return PERSON_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash) + name.charCodeAt(i);
+  return PERSON_COLORS[Math.abs(hash) % PERSON_COLORS.length];
+}
+
 // ── App state ──
 const state = {
   screen: 'loading',
@@ -517,6 +539,7 @@ function addFrequentItem(freqItem) {
   const newItem = {
     id: uid(), text: freqItem.text, category: freqItem.category,
     checked: false, addedAt: new Date().toISOString(),
+    addedBy: myName(),
   };
   state.items.unshift(newItem);
   trackFrequency(freqItem.text, freqItem.category);
@@ -945,6 +968,7 @@ function addItem() {
   const newItem = {
     id: uid(), text, category: state.selectedCategory,
     qty: qty || '', checked: false, addedAt: new Date().toISOString(),
+    addedBy: myName(),
   };
   state.items.unshift(newItem);
   trackFrequency(text, state.selectedCategory);
@@ -965,7 +989,11 @@ function addItem() {
 
 function toggleItem(id) {
   const item = state.items.find(i => i.id === id);
-  if (item) { item.checked = !item.checked; item.checkedAt = new Date().toISOString(); }
+  if (item) {
+    item.checked = !item.checked;
+    item.checkedAt = new Date().toISOString();
+    item.checkedBy = item.checked ? myName() : '';
+  }
   render(); saveList();
 }
 
@@ -1392,6 +1420,12 @@ function renderList() {
                 },
               })
             : h('span', { className: 'item-text', onClick: () => startEdit(item) }, item.text),
+          item.addedBy
+            ? h('span', { className: 'item-by' },
+                h('span', { className: 'item-by-dot', style: { background: personColor(item.addedBy) } }),
+                item.addedBy,
+              )
+            : null,
           h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
         ),
       )
@@ -1429,6 +1463,12 @@ function renderList() {
               h('div', { className: 'item-check checked', onClick: () => toggleItem(item.id) }, '✓'),
               item.qty ? h('span', { className: 'item-qty checked' }, item.qty) : null,
               h('span', { className: 'item-text checked' }, item.text),
+              item.checkedBy
+                ? h('span', { className: 'item-by' },
+                    h('span', { className: 'item-by-dot', style: { background: personColor(item.checkedBy) } }),
+                    '✓ ' + item.checkedBy,
+                  )
+                : null,
               h('button', { className: 'item-delete', onClick: () => removeItem(item.id) }, '×'),
             ),
           )
