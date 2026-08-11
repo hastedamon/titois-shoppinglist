@@ -28,6 +28,30 @@
       --radius: 12px;
     }
 
+    [data-theme="dark"] {
+      --green-700: #6aaa7a;
+      --green-600: #5a9a6a;
+      --green-500: #4a8a5a;
+      --green-100: #2a3a2e;
+      --green-50: #1e2a22;
+      --sage-bg: #141a16;
+      --text-primary: #d8e4d8;
+      --text-secondary: #8aaa8a;
+      --text-muted: #6a7a6a;
+      --border: #2a3a2e;
+      --card-bg: #1c241e;
+      --danger: #d47070;
+    }
+    [data-theme="dark"] .header {
+      background: linear-gradient(135deg, #2a4a34 0%, #1e3828 100%);
+    }
+    [data-theme="dark"] .signin-btn {
+      background: #1c241e; color: #d8e4d8; border-color: #2a3a2e;
+    }
+    [data-theme="dark"] .share-panel { background: var(--green-50); }
+    [data-theme="dark"] .item-bg-check { background: #3a7a4a; }
+    [data-theme="dark"] .item-bg-delete { background: #8a3a3a; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--sage-bg);
@@ -353,7 +377,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v0.8';
+const APP_VERSION = 'v0.9';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -381,6 +405,9 @@ const i18n = {
     signOut: '↩ Sign out',
     swipeCheck: '✓ Got it',
     swipeDelete: '✕ Delete',
+    themeLight: '☀️ Light',
+    themeDark: '🌙 Dark',
+    themeAuto: '⚙️ Auto',
     frequent: '⚡ Frequent',
     sharedWithLabel: 'Shared with',
     ownedBy: (e) => `List owned by ${e}`,
@@ -412,6 +439,9 @@ const i18n = {
     signOut: '↩ Tanca sessió',
     swipeCheck: '✓ Comprat',
     swipeDelete: '✕ Esborrar',
+    themeLight: '☀️ Clar',
+    themeDark: '🌙 Fosc',
+    themeAuto: '⚙️ Auto',
     frequent: '⚡ Freqüents',
     sharedWithLabel: 'Compartit amb',
     ownedBy: (e) => `Llista de ${e}`,
@@ -492,6 +522,7 @@ const state = {
   autocompleteIndex: -1,
   sharedWith: [],       // [{ email, role }] — other people on this list
   isOwner: true,        // whether current user owns the list file
+  theme: 'auto',       // 'light', 'dark', 'auto'
 };
 
 let tokenClient = null;
@@ -509,6 +540,30 @@ function saveLang(lang) {
   document.title = t('appTitle');
   render();
   renderInputBar();
+}
+
+// ── Theme (light / dark / auto) ──
+function loadTheme() {
+  try { state.theme = localStorage.getItem('shopping-list-theme') || 'auto'; } catch(e) {}
+  applyTheme();
+}
+
+function saveTheme(theme) {
+  state.theme = theme;
+  try { localStorage.setItem('shopping-list-theme', theme); } catch(e) {}
+  applyTheme();
+  render();
+}
+
+function applyTheme() {
+  let resolved = state.theme;
+  if (resolved === 'auto') {
+    resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', resolved);
+  // Update theme-color meta for Android status bar
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = resolved === 'dark' ? '#1e3828' : '#4a7c59';
 }
 
 // ╔══════════════════════════════════════════════════╗
@@ -1311,6 +1366,11 @@ function renderList() {
       h('div', { className: 'user-menu' },
         state.user?.email ? h('div', { className: 'user-menu-email' }, state.user.email) : null,
         renderLangToggle('user-menu-lang'),
+        h('div', { className: 'user-menu-lang' },
+          h('button', { className: `lang-btn ${state.theme === 'light' ? 'active' : ''}`, onClick: () => saveTheme('light') }, t('themeLight')),
+          h('button', { className: `lang-btn ${state.theme === 'dark' ? 'active' : ''}`, onClick: () => saveTheme('dark') }, t('themeDark')),
+          h('button', { className: `lang-btn ${state.theme === 'auto' ? 'active' : ''}`, onClick: () => saveTheme('auto') }, t('themeAuto')),
+        ),
         h('button', { className: 'user-menu-item danger', onClick: signOut }, t('signOut')),
         h('div', { style: { padding: '6px 16px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', marginTop: '4px' } }, APP_VERSION),
       )
@@ -1490,9 +1550,14 @@ function renderList() {
 // ── Start ──
 document.addEventListener('DOMContentLoaded', () => {
   loadLang();
+  loadTheme();
   document.title = t('appTitle');
   render();
   initAuth();
+  // Listen for system dark mode changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (state.theme === 'auto') applyTheme();
+  });
 });
 </script>
 </body>
