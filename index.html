@@ -202,6 +202,10 @@
     .freq-chip:active { background: var(--green-100); border-style: solid; border-color: var(--green-500); }
     .freq-chip-icon { font-size: 13px; }
     .freq-chip-plus { color: var(--green-500); font-weight: 600; font-size: 15px; margin-left: 2px; }
+    .freq-chip-del {
+      color: var(--text-muted); font-size: 14px; margin-left: 2px; padding: 0 2px;
+      opacity: 0.6; line-height: 1;
+    }
 
     /* ── Empty state ── */
     .empty { text-align: center; padding: 60px 20px; }
@@ -408,7 +412,7 @@ const LIST_FILENAME = 'shopping-list-shared.json';
 const FREQ_FILENAME = 'shopping-list-freq.json';
 const SYNC_INTERVAL = 5000;
 const MAX_FREQUENT = 8;
-const APP_VERSION = 'v1.0.3';
+const APP_VERSION = 'v1.0.4';
 
 // ╔══════════════════════════════════════════════════╗
 // ║  i18n — English & Catalan                        ║
@@ -658,6 +662,13 @@ function addFrequentItem(freqItem) {
   render(); saveList();
 }
 
+function removeFrequentItem(text) {
+  const key = normalizeText(text);
+  delete state.frequency[key];
+  render();
+  saveFrequency();
+}
+
 async function loadFrequency() {
   if (!state.freqFileId || !state.accessToken) return;
   try {
@@ -726,18 +737,34 @@ function initAuth() {
 
 function signIn() {
   isInitialLoad = true;
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  // Try without forcing consent first — Google will auto-show consent only if needed
+  const origCallback = tokenClient.callback;
+  tokenClient.callback = (resp) => {
+    tokenClient.callback = origCallback;
+    if (resp.error) {
+      // Silent didn't work — now force consent (first-time users)
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+      origCallback(resp);
+    }
+  };
+  try {
+    tokenClient.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    tokenClient.callback = origCallback;
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  }
 }
 
 function trySilentRefresh() {
   // prompt: '' means "don't show any UI" — works if user previously consented
-  // Add timeout: if no response in 3 seconds, show sign-in screen (fixes Safari)
+  // Add timeout: if no response in 8 seconds, show sign-in screen (fixes Safari)
   const fallbackTimer = setTimeout(() => {
     if (state.screen !== 'list') {
       state.screen = 'signin';
       render();
     }
-  }, 3000);
+  }, 8000);
 
   const origCallback = tokenClient.callback;
   tokenClient.callback = (resp) => {
@@ -1534,6 +1561,7 @@ function renderList() {
               h('span', { className: 'freq-chip-icon' }, catOf(f.category).icon),
               h('span', {}, f.text),
               h('span', { className: 'freq-chip-plus' }, '+'),
+              h('span', { className: 'freq-chip-del', onClick: (e) => { e.stopPropagation(); removeFrequentItem(f.text); } }, '×'),
             )
           ),
         ),
